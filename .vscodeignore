@@ -6,3 +6,4 @@ node_modules/**
 *.vsix
 .gitignore
 python/__pycache__/**
+media/sql-editor.source.mjs

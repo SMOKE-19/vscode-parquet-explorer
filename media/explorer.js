@@ -7,6 +7,10 @@ let nextId = 1;
 let page = 0;
 let columnOffset = 0;
 let result;
+const sqlEditor = window.PQSqlEditor.create($("sql-editor"), {
+  onRun: () => query(),
+  onLint: (sql) => request("lint", { sql }),
+});
 
 function request(operation, payload = {}) {
   return new Promise((resolve, reject) => {
@@ -25,6 +29,15 @@ function formatCell(value) {
   if (value === null) return "NULL";
   if (typeof value === "object") return JSON.stringify(value);
   return String(value);
+}
+
+function formatBytes(value) {
+  if (!Number.isFinite(value) || value < 0) return "—";
+  const units = ["B", "KiB", "MiB", "GiB", "TiB"];
+  let size = value;
+  let unit = 0;
+  while (size >= 1024 && unit < units.length - 1) { size /= 1024; unit += 1; }
+  return `${unit === 0 ? size.toLocaleString() : size.toFixed(2)} ${units[unit]}`;
 }
 
 function render(resultValue) {
@@ -65,7 +78,14 @@ function render(resultValue) {
         const td = document.createElement("td");
         if (value === null) td.className = "null";
         const text = formatCell(value);
-        td.textContent = text.length > 240 ? `${text.slice(0, 237)}…` : text;
+        if (Array.isArray(value)) {
+          const count = document.createElement("span");
+          count.className = "list-count";
+          count.textContent = `${value.length.toLocaleString()}개`;
+          count.title = `리스트 원소 ${value.length.toLocaleString()}개`;
+          td.append(count);
+        }
+        td.append(document.createTextNode(text.length > 240 ? `${text.slice(0, 237)}…` : text));
         td.title = text;
         tr.append(td);
       });
@@ -76,10 +96,12 @@ function render(resultValue) {
   }
   const endRow = result.row_offset + result.rows.length;
   const endColumn = result.column_offset + result.columns.length;
-  $("row-range").textContent = `${result.total_rows ? result.row_offset + 1 : 0}–${endRow} / ${result.total_rows}`;
+  $("row-range").textContent = `${result.total_rows ? (result.row_offset + 1).toLocaleString() : 0}–${endRow.toLocaleString()} / ${result.total_rows.toLocaleString()}`;
   $("column-range").textContent = `${result.total_columns ? result.column_offset + 1 : 0}–${endColumn} / ${result.total_columns}`;
+  $("query-total").textContent = result.total_rows.toLocaleString();
   $("previous-page").disabled = page === 0;
   $("next-page").disabled = !result.has_more;
+  $("next-page").title = result.has_more ? "다음 페이지" : "현재 SQL 결과의 마지막 페이지입니다.";
   $("previous-columns").disabled = !result.has_previous_columns;
   $("next-columns").disabled = !result.has_more_columns;
   status(`${result.elapsed_ms} ms`);
@@ -90,7 +112,7 @@ async function query(nextPage = 0, nextColumnOffset = 0) {
   $("run").disabled = true;
   try {
     const response = await request("query", {
-      sql: $("sql").value,
+      sql: sqlEditor.getValue(),
       page: nextPage,
       page_size: Number($("page-size").value),
       column_offset: nextColumnOffset,
@@ -110,7 +132,9 @@ async function query(nextPage = 0, nextColumnOffset = 0) {
 async function refreshMetadata() {
   const metadata = await request("meta");
   $("source").value = metadata.source_path;
-  $("meta").textContent = `${metadata.row_count.toLocaleString()} rows · ${metadata.column_count} columns · ${metadata.file_count} file(s)`;
+  $("meta").textContent = `${metadata.row_count.toLocaleString()} rows · ${metadata.column_count.toLocaleString()} columns · ${metadata.file_count.toLocaleString()} file(s) · ${formatBytes(metadata.file_bytes)}`;
+  $("source-total").textContent = metadata.row_count.toLocaleString();
+  $("query-total").textContent = "—";
 }
 
 window.addEventListener("message", async (event) => {
@@ -133,11 +157,12 @@ window.addEventListener("message", async (event) => {
 });
 
 $("run").addEventListener("click", () => query());
-$("sql").addEventListener("keydown", (event) => {
-  if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) { event.preventDefault(); query(); }
-});
 $("lint").addEventListener("click", async () => {
-  try { const response = await request("lint", { sql: $("sql").value }); status(`SQL 정상 · ${response.elapsed_ms} ms`); }
+  try {
+    const response = await request("lint", { sql: sqlEditor.getValue() });
+    sqlEditor.applyLintResult(response);
+    status(response.ok ? `SQL 정상 · ${response.elapsed_ms} ms` : response.message, !response.ok);
+  }
   catch (error) { status(String(error.message || error), true); }
 });
 $("open-source").addEventListener("click", async () => {
@@ -148,4 +173,5 @@ $("previous-page").addEventListener("click", () => query(Math.max(0, page - 1), 
 $("next-page").addEventListener("click", () => query(page + 1, columnOffset));
 $("previous-columns").addEventListener("click", () => query(page, Math.max(0, columnOffset - 20)));
 $("next-columns").addEventListener("click", () => query(page, columnOffset + 20));
+$("page-size").addEventListener("change", () => query(0, columnOffset));
 vscode.postMessage({ type: "loaded" });

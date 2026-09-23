@@ -1,4 +1,6 @@
 :root { font-family: var(--vscode-font-family); color: var(--vscode-foreground); background: var(--vscode-editor-background); }
+body { --pq-sql-keyword: #0000ff; --pq-sql-string: #a31515; --pq-sql-number: #098658; --pq-sql-comment: #008000; --pq-sql-variable: #001080; }
+body.vscode-dark, body.vscode-high-contrast { --pq-sql-keyword: #569cd6; --pq-sql-string: #ce9178; --pq-sql-number: #b5cea8; --pq-sql-comment: #6a9955; --pq-sql-variable: #9cdcfe; }
 * { box-sizing: border-box; }
 body { margin: 0; font-size: 13px; }
 header { padding: 18px 22px 8px; border-bottom: 1px solid var(--vscode-panel-border); }
@@ -8,7 +10,15 @@ main { padding: 16px 22px; }
 .source-row, .toolbar, footer, footer div { display: flex; align-items: center; gap: 8px; }
 .source-row input { flex: 1; min-width: 0; }
 input, textarea, select { color: var(--vscode-input-foreground); background: var(--vscode-input-background); border: 1px solid var(--vscode-input-border, transparent); font: inherit; padding: 6px 8px; }
-textarea { display: block; width: 100%; height: 108px; resize: vertical; margin: 6px 0 10px; font-family: var(--vscode-editor-font-family); font-size: var(--vscode-editor-font-size); }
+#sql-editor { margin: 6px 0 10px; border: 1px solid var(--vscode-input-border, var(--vscode-panel-border)); }
+#sql-editor .cm-editor { height: 136px; font-family: var(--vscode-editor-font-family); font-size: var(--vscode-editor-font-size); }
+#sql-editor .cm-scroller { overflow: auto; }
+#sql-editor .cm-content { min-height: 120px; }
+#sql-editor .cm-tooltip { z-index: 10; }
+.counts { display: flex; gap: 10px; flex-wrap: wrap; margin: 8px 0 14px; }
+.counts div { min-width: 155px; padding: 8px 12px; border: 1px solid var(--vscode-panel-border); border-radius: 4px; }
+.counts span { display: block; color: var(--vscode-descriptionForeground); font-size: 12px; }
+.counts strong { display: block; margin-top: 2px; font-size: 18px; font-variant-numeric: tabular-nums; }
 button { white-space: nowrap; padding: 6px 10px; color: var(--vscode-button-secondaryForeground); background: var(--vscode-button-secondaryBackground); border: 0; cursor: pointer; }
 button:hover { background: var(--vscode-button-secondaryHoverBackground); }
 button.primary { color: var(--vscode-button-foreground); background: var(--vscode-button-background); }
@@ -19,7 +29,7 @@ button small { opacity: .7; margin-left: 6px; }
 .toolbar { margin-bottom: 10px; flex-wrap: wrap; }
 #status { color: var(--vscode-descriptionForeground); }
 #status.error { color: var(--vscode-errorForeground); }
-.table-wrap { overflow: auto; max-height: calc(100vh - 340px); min-height: 180px; border: 1px solid var(--vscode-panel-border); }
+.table-wrap { overflow: auto; max-height: calc(100vh - 410px); min-height: 180px; border: 1px solid var(--vscode-panel-border); }
 .empty { padding: 25px; color: var(--vscode-descriptionForeground); }
 table { border-collapse: collapse; min-width: 100%; white-space: nowrap; font-family: var(--vscode-editor-font-family); }
 th, td { border-bottom: 1px solid var(--vscode-panel-border); padding: 7px 10px; text-align: left; max-width: 320px; overflow: hidden; text-overflow: ellipsis; }
@@ -27,6 +37,7 @@ th { position: sticky; top: 0; z-index: 1; background: var(--vscode-editor-backg
 th small { display: block; color: var(--vscode-descriptionForeground); font-weight: normal; }
 td.row-number, th.row-number { position: sticky; left: 0; background: var(--vscode-editor-background); color: var(--vscode-descriptionForeground); }
 td.null { color: var(--vscode-descriptionForeground); font-style: italic; }
+.list-count { display: inline-block; margin-right: 7px; padding: 1px 5px; border: 1px solid var(--vscode-badge-background); border-radius: 3px; color: var(--vscode-badge-foreground); background: var(--vscode-badge-background); font-size: 11px; font-weight: 600; }
 td details { max-width: 320px; }
 td details pre { white-space: pre-wrap; max-height: 250px; overflow: auto; }
 footer { justify-content: space-between; flex-wrap: wrap; padding-top: 10px; }

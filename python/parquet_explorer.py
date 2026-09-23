@@ -51,6 +51,7 @@ class ParquetExplorerEngine:
         self._connection.execute("SET memory_limit = '2GB'")
         self.source = requested
         self.files: list[Path] = []
+        self._file_bytes = 0
         self._columns: list[dict[str, str]] = []
         self._row_count_cache: dict[str, int] = {}
         self.set_source(requested)
@@ -79,6 +80,7 @@ class ParquetExplorerEngine:
         return self.metadata()
 
     def _replace_source(self, source: Path, files: list[Path]) -> None:
+        file_bytes = sum(file.stat().st_size for file in files)
         relation = self._connection.from_parquet(
             [str(path) for path in files],
             union_by_name=True,
@@ -87,6 +89,7 @@ class ParquetExplorerEngine:
         relation.create_view("data", replace=True)
         self.source = source
         self.files = files
+        self._file_bytes = file_bytes
         self._row_count_cache.clear()
         self._columns = [
             {"name": str(name), "type": str(dtype)}
@@ -102,7 +105,9 @@ class ParquetExplorerEngine:
             row_count = int(self._connection.execute("SELECT count(*) FROM data").fetchone()[0])
         return {
             "source_path": str(self.source),
+            "source_kind": "dataset" if self.source.is_dir() else "file",
             "file_count": len(self.files),
+            "file_bytes": self._file_bytes,
             "row_count": row_count,
             "column_count": len(self._columns),
             "columns": list(self._columns),
@@ -314,14 +319,18 @@ def _json_safe(value: Any) -> Any:
 
 
 def _error_position(message: str) -> dict[str, int] | None:
-    line_match = re.search(r"LINE\s+(\d+):", message)
+    line_match = re.search(r"(?m)^LINE\s+(\d+): ?", message)
     if not line_match:
         return None
     lines = message.splitlines()
     caret_line = next((line for line in reversed(lines) if "^" in line), "")
+    line_number = int(line_match.group(1))
+    # DuckDB renders the caret below "LINE 1: EXPLAIN <SQL>". Both the
+    # diagnostic prefix and our EXPLAIN prefix must be removed for the editor.
+    prefix_width = len(line_match.group(0)) + (len("EXPLAIN ") if line_number == 1 else 0)
     return {
-        "line": max(0, int(line_match.group(1)) - 1),
-        "column": max(0, caret_line.find("^")),
+        "line": max(0, line_number - 1),
+        "column": max(0, caret_line.find("^") - prefix_width),
     }
 
 

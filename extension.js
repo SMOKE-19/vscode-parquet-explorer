@@ -6,15 +6,18 @@ const crypto = require("node:crypto");
 const vscode = require("vscode");
 const { pythonCommand, startBridge } = require("./bridge");
 const activeBridges = new Set();
+const VIEW_TYPE = "pqExplorer.parquetExplorer";
 
 function renderHtml(extensionPath, webview) {
   const nonce = crypto.randomBytes(16).toString("hex");
   const script = webview.asWebviewUri(vscode.Uri.file(path.join(extensionPath, "media", "explorer.js")));
+  const sqlEditorScript = webview.asWebviewUri(vscode.Uri.file(path.join(extensionPath, "media", "sql-editor.js")));
   const style = webview.asWebviewUri(vscode.Uri.file(path.join(extensionPath, "media", "explorer.css")));
   return fs.readFileSync(path.join(extensionPath, "media", "explorer.html"), "utf8")
     .replaceAll("__CSP_SOURCE__", webview.cspSource)
     .replaceAll("__NONCE__", nonce)
     .replaceAll("__SCRIPT_URI__", script.toString())
+    .replaceAll("__SQL_EDITOR_URI__", sqlEditorScript.toString())
     .replaceAll("__STYLE_URI__", style.toString());
 }
 
@@ -34,24 +37,15 @@ async function selectSource(uri) {
   return files?.[0];
 }
 
-async function openExplorer(context, sourceUri) {
-  const source = await selectSource(sourceUri);
-  if (!source) return;
-  const stat = await vscode.workspace.fs.stat(source);
-  if (!(stat.type & vscode.FileType.Directory) && !source.fsPath.toLowerCase().endsWith(".parquet")) {
-    vscode.window.showErrorMessage("Parquet 파일 또는 dataset 폴더를 선택하세요.");
-    return;
-  }
+async function attachExplorer(context, panel, source) {
   const workspace = vscode.workspace.getWorkspaceFolder(source);
   const root = workspace?.uri.fsPath || path.dirname(source.fsPath);
   const configured = vscode.workspace.getConfiguration("pqExplorer", source).get("pythonPath", "");
   const python = pythonCommand(root, configured);
-  const panel = vscode.window.createWebviewPanel(
-    "pqExplorer.parquetExplorer",
-    `PQ Explorer · ${path.basename(source.fsPath)}`,
-    vscode.ViewColumn.Active,
-    { enableScripts: true, localResourceRoots: [vscode.Uri.file(path.join(context.extensionPath, "media"))] },
-  );
+  panel.webview.options = {
+    enableScripts: true,
+    localResourceRoots: [vscode.Uri.file(path.join(context.extensionPath, "media"))],
+  };
   let bridge;
   let disposed = false;
   let webviewLoaded = false;
@@ -88,11 +82,39 @@ async function openExplorer(context, sourceUri) {
   }
 }
 
+async function openExplorer(context, sourceUri) {
+  const source = await selectSource(sourceUri);
+  if (!source) return;
+  const stat = await vscode.workspace.fs.stat(source);
+  if (!(stat.type & vscode.FileType.Directory) && !source.fsPath.toLowerCase().endsWith(".parquet")) {
+    vscode.window.showErrorMessage("Parquet 파일 또는 dataset 폴더를 선택하세요.");
+    return;
+  }
+  if (!(stat.type & vscode.FileType.Directory)) {
+    return vscode.commands.executeCommand("vscode.openWith", source, VIEW_TYPE);
+  }
+  const panel = vscode.window.createWebviewPanel(
+    VIEW_TYPE,
+    `PQ Explorer · ${path.basename(source.fsPath)}`,
+    vscode.ViewColumn.Active,
+    { enableScripts: true },
+  );
+  return attachExplorer(context, panel, source);
+}
+
 function activate(context) {
   context.subscriptions.push(vscode.commands.registerCommand(
     "pqExplorer.openParquetExplorer",
     (uri) => openExplorer(context, uri),
   ));
+  context.subscriptions.push(vscode.window.registerCustomEditorProvider(VIEW_TYPE, {
+    openCustomDocument(uri) {
+      return { uri, dispose() {} };
+    },
+    resolveCustomEditor(document, panel) {
+      return attachExplorer(context, panel, document.uri);
+    },
+  }, { supportsMultipleEditorsPerDocument: true }));
 }
 
 function deactivate() {

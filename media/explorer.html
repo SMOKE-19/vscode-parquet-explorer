@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src __CSP_SOURCE__; script-src 'nonce-__NONCE__';">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src __CSP_SOURCE__ 'nonce-__NONCE__'; script-src 'nonce-__NONCE__';">
   <link rel="stylesheet" href="__STYLE_URI__">
   <title>PQ Explorer</title>
 </head>
@@ -18,8 +18,12 @@
       <button id="open-source">소스 열기</button>
     </div>
     <div id="meta" class="meta">DuckDB 작업자를 시작하는 중입니다…</div>
+    <div class="counts" aria-live="polite">
+      <div><span>원본 전체 행</span><strong id="source-total">—</strong></div>
+      <div><span>SQL 결과 전체 행</span><strong id="query-total">—</strong></div>
+    </div>
     <label for="sql">SQL</label>
-    <textarea id="sql" spellcheck="false">SELECT * FROM data</textarea>
+    <div id="sql-editor" aria-label="SQL 편집기"></div>
     <div class="toolbar">
       <button id="run" class="primary">실행 <small>Ctrl+Enter</small></button>
       <button id="lint">SQL 검사</button>
@@ -32,6 +36,7 @@
       <div><button id="previous-page">↑ 이전 행</button><span id="row-range">—</span><button id="next-page">다음 행 ↓</button></div>
     </footer>
   </main>
+  <script nonce="__NONCE__" src="__SQL_EDITOR_URI__"></script>
   <script nonce="__NONCE__" src="__SCRIPT_URI__"></script>
 </body>
 </html>

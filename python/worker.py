@@ -58,8 +58,6 @@ def main() -> int:
                     result = engine.query(**payload)
                 elif operation == "lint":
                     result = engine.lint(payload["sql"])
-                    if not result["ok"]:
-                        raise ValueError(result["message"])
                 elif operation == "source":
                     replacement = open_engine(payload["path"], root)
                     previous = engine
