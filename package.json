@@ -1,0 +1,56 @@
+{
+  "name": "pq-explorer",
+  "displayName": "PQ Explorer",
+  "description": "Read-only DuckDB Parquet Explorer for VS Code.",
+  "version": "0.1.0",
+  "publisher": "smoke-19",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/SMOKE-19/vscode-parquet-explorer.git"
+  },
+  "license": "SEE LICENSE IN LICENSE",
+  "engines": { "vscode": "^1.90.0" },
+  "extensionKind": ["workspace"],
+  "capabilities": {
+    "untrustedWorkspaces": { "supported": false },
+    "virtualWorkspaces": { "supported": false }
+  },
+  "categories": ["Data Science", "Visualization"],
+  "main": "./extension.js",
+  "devDependencies": {
+    "@vscode/vsce": "4.0.0"
+  },
+  "activationEvents": ["onCommand:pqExplorer.openParquetExplorer"],
+  "contributes": {
+    "commands": [
+      {
+        "command": "pqExplorer.openParquetExplorer",
+        "title": "PQ Explorer: Open Parquet"
+      }
+    ],
+    "menus": {
+      "explorer/context": [
+        {
+          "command": "pqExplorer.openParquetExplorer",
+          "when": "resourceExtname == .parquet",
+          "group": "navigation"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "PQ Explorer",
+      "properties": {
+        "pqExplorer.pythonPath": {
+          "type": "string",
+          "default": "",
+          "description": "duckdb가 설치된 Python 실행 파일. 비워두면 workspace 내 가상환경을 탐색합니다."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "check": "node --check extension.js && node --check bridge.js && node --check media/explorer.js",
+    "test": "node --test tests/*.test.js",
+    "package": "vsce package --out pq-explorer-0.1.0.vsix"
+  }
+}
