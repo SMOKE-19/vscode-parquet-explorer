@@ -7,6 +7,9 @@ let nextId = 1;
 let querySequence = 0;
 let rowOffset = 0;
 let columnOffset = 0;
+let activeRowLimit = 50;
+let activeColumnLimit = 20;
+let pinnedColumns = [];
 let result;
 let favoriteId;
 let favorites = [];
@@ -14,7 +17,7 @@ let colorQuerySql;
 const columnColors = new Map();
 const CATEGORY_HUES = [210, 30, 150, 330, 90, 270, 0, 180];
 const sqlEditor = window.PQSqlEditor.create($("sql-editor"), {
-  onRun: () => query(),
+  onRun: () => runQuery(),
   onLint: (sql) => request("lint", { sql }),
 });
 
@@ -53,7 +56,7 @@ function categoryKey(value) {
 
 function categoryColors(rows, column, columnIndex) {
   if (rows.length < 2) return null;
-  const absoluteIndex = result.column_offset + columnIndex;
+  const absoluteIndex = column.index ?? result.column_offset + columnIndex;
   let colors = columnColors.get(absoluteIndex);
   const keys = new Set();
   for (const row of rows) keys.add(categoryKey(row[columnIndex]));
@@ -207,7 +210,16 @@ function render(resultValue) {
     header.append(number);
     for (const [index, column] of result.columns.entries()) {
       const th = document.createElement("th");
-      th.textContent = column.name;
+      const pin = document.createElement("button");
+      const isPinned = pinnedColumns.includes(column.index);
+      pin.className = "column-pin";
+      pin.textContent = isPinned ? "★" : "☆";
+      pin.setAttribute("aria-label", `${column.name} 칼럼 ${isPinned ? "고정 해제" : "고정"}`);
+      pin.setAttribute("aria-pressed", String(isPinned));
+      pin.title = isPinned ? "칼럼 고정 해제" : "칼럼 고정";
+      pin.addEventListener("click", () => toggleColumnPin(column.index));
+      th.append(pin, document.createTextNode(column.name));
+      if (isPinned) th.classList.add("pinned-column");
       if (palettes[index]) th.title = "반복 값 색상은 현재 페이지 기준으로 적용됩니다.";
       const kind = document.createElement("small");
       kind.textContent = column.type;
@@ -225,6 +237,7 @@ function render(resultValue) {
       tr.append(numberCell);
       row.forEach((value, index) => {
         const td = document.createElement("td");
+        if (pinnedColumns.includes(result.columns[index].index)) td.classList.add("pinned-column");
         const hue = palettes[index]?.get(categoryKey(value));
         if (hue !== undefined) {
           td.classList.add("category-cell");
@@ -247,17 +260,20 @@ function render(resultValue) {
     });
     table.append(body);
     wrap.append(table);
+    let pinnedLeft = number.getBoundingClientRect().width;
+    for (const [index, column] of result.columns.entries()) {
+      if (!pinnedColumns.includes(column.index)) continue;
+      const left = `${pinnedLeft}px`;
+      header.children[index + 1].style.left = left;
+      for (const row of body.rows) row.cells[index + 1].style.left = left;
+      pinnedLeft += header.children[index + 1].getBoundingClientRect().width;
+    }
   }
-  const endRow = result.row_offset + result.rows.length;
-  const endColumn = result.column_offset + result.columns.length;
-  $("row-position").value = result.total_rows ? String(endRow) : "";
-  $("row-position").max = String(result.total_rows);
-  $("row-position").disabled = result.total_rows === 0;
-  $("row-total").textContent = result.total_rows.toLocaleString();
-  $("column-position").value = result.total_columns ? String(endColumn) : "";
-  $("column-position").max = String(result.total_columns);
-  $("column-position").disabled = result.total_columns === 0;
-  $("column-total").textContent = result.total_columns.toLocaleString();
+  $("row-position").value = result.rows.length
+    ? `${(result.row_offset + 1).toLocaleString()}-${(result.row_offset + result.rows.length).toLocaleString()}` : "—";
+  const movingColumns = result.columns.filter((column) => !pinnedColumns.includes(column.index));
+  $("column-position").value = movingColumns.length
+    ? `${(movingColumns[0].index + 1).toLocaleString()}-${(movingColumns.at(-1).index + 1).toLocaleString()}` : "—";
   $("previous-page").disabled = result.row_offset === 0;
   $("next-page").disabled = !result.has_more;
   $("next-page").title = result.has_more ? "다음 페이지" : "현재 SQL 결과의 마지막 페이지입니다.";
@@ -268,16 +284,22 @@ function render(resultValue) {
 
 async function query(nextRowOffset = 0, nextColumnOffset = 0, limits = {}) {
   const sequence = ++querySequence;
+  const sql = sqlEditor.getValue();
+  if (colorQuerySql !== undefined && colorQuerySql !== sql) {
+    pinnedColumns = [];
+    activeColumnLimit = Number($("column-limit").value);
+  }
   status("DuckDB 조회 중…");
   $("run").disabled = true;
   try {
     const response = await request("query", {
-      sql: sqlEditor.getValue(),
+      sql,
       favorite_id: favoriteId,
       row_offset: nextRowOffset,
-      page_size: limits.rows || Number($("page-size").value),
+      page_size: limits.rows || activeRowLimit,
       column_offset: nextColumnOffset,
-      column_limit: limits.columns || Number($("column-limit").value),
+      column_limit: (limits.columns || activeColumnLimit) + pinnedColumns.length,
+      pinned_column_indices: pinnedColumns,
       timeout_seconds: 30,
     });
     if (sequence !== querySequence) return;
@@ -295,27 +317,31 @@ async function refreshMetadata() {
   const metadata = await request("meta");
   columnColors.clear();
   colorQuerySql = undefined;
+  pinnedColumns = [];
+  activeColumnLimit = Number($("column-limit").value);
   $("source").value = metadata.source_path;
-  $("meta").textContent = `${metadata.file_count.toLocaleString()} file(s) · ${formatBytes(metadata.file_bytes)}`;
+  $("meta").textContent = `${metadata.file_count.toLocaleString()} file(s) · ${formatBytes(metadata.file_bytes)} · 칼럼 ${metadata.column_count.toLocaleString()} · 행 ${metadata.row_count.toLocaleString()}`;
 }
 
-function jumpToPosition(kind) {
-  if (!result) return;
-  const rows = kind === "row";
-  const input = $(rows ? "row-position" : "column-position");
-  const total = rows ? result.total_rows : result.total_columns;
-  const currentEnd = rows ? result.row_offset + result.rows.length : result.column_offset + result.columns.length;
-  const target = Number(input.value);
-  if (!Number.isSafeInteger(target) || target < 1 || target > total) {
-    input.value = String(currentEnd);
-    status(`${rows ? "행" : "칼럼"} 번호는 1~${total.toLocaleString()} 사이여야 합니다.`, true);
-    return;
+function runQuery() {
+  query();
+}
+
+function toggleColumnPin(index) {
+  if (!Number.isInteger(index)) return;
+  if (pinnedColumns.includes(index)) {
+    pinnedColumns = pinnedColumns.filter((item) => item !== index);
+    activeColumnLimit += 1;
   }
-  if (target === currentEnd) return;
-  const selectedLimit = Number($(rows ? "page-size" : "column-limit").value);
-  const limit = Math.min(selectedLimit, target);
-  if (rows) query(target - limit, columnOffset, { rows: limit });
-  else query(rowOffset, target - limit, { columns: limit });
+  else {
+    if (activeColumnLimit <= 1) {
+      status("고정 칼럼 외에 이동할 칼럼이 최소 1개 필요합니다.", true);
+      return;
+    }
+    pinnedColumns.push(index);
+    activeColumnLimit -= 1;
+  }
+  query(rowOffset, 0);
 }
 
 window.addEventListener("message", async (event) => {
@@ -337,7 +363,7 @@ window.addEventListener("message", async (event) => {
   }
 });
 
-$("run").addEventListener("click", () => query());
+$("run").addEventListener("click", runQuery);
 $("save-favorite").addEventListener("click", async () => {
   try {
     const saved = await request("favorites.save", { id: favoriteId, sql: sqlEditor.getValue() });
@@ -373,22 +399,26 @@ $("open-source").addEventListener("click", async () => {
   catch (error) { status(String(error.message || error), true); }
 });
 $("previous-page").addEventListener("click", () => {
-  const count = Math.min(rowOffset, Number($("page-size").value));
+  const count = Math.min(rowOffset, activeRowLimit);
   query(rowOffset - count, columnOffset, { rows: count });
 });
 $("next-page").addEventListener("click", () => query(rowOffset + result.rows.length, columnOffset));
 $("previous-columns").addEventListener("click", () => {
-  const count = Math.min(columnOffset, Number($("column-limit").value));
-  query(rowOffset, columnOffset - count, { columns: count });
+  query(rowOffset, result.previous_column_offset);
 });
-$("next-columns").addEventListener("click", () => query(rowOffset, columnOffset + result.columns.length));
-$("page-size").addEventListener("change", () => query(0, columnOffset));
-$("column-limit").addEventListener("change", () => query(0, 0));
-for (const [id, kind] of [["row-position", "row"], ["column-position", "column"]]) {
-  const input = $(id);
-  input.addEventListener("blur", () => jumpToPosition(kind));
-  input.addEventListener("keydown", (event) => {
-    if (event.key === "Enter") { event.preventDefault(); input.blur(); }
-  });
-}
+$("next-columns").addEventListener("click", () => query(rowOffset, result.next_column_offset));
+$("page-size").addEventListener("change", () => {
+  activeRowLimit = Number($("page-size").value);
+  query(0, columnOffset);
+});
+$("column-limit").addEventListener("change", () => {
+  const selected = Number($("column-limit").value);
+  if (selected <= pinnedColumns.length) {
+    $("column-limit").value = String(activeColumnLimit + pinnedColumns.length);
+    status("고정 칼럼 외에 이동할 칼럼이 최소 1개 필요합니다.", true);
+    return;
+  }
+  activeColumnLimit = selected - pinnedColumns.length;
+  query(rowOffset, 0);
+});
 vscode.postMessage({ type: "loaded" });

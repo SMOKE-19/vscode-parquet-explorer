@@ -144,6 +144,7 @@ class ParquetExplorerEngine:
         row_offset: int | None = None,
         column_offset: int = 0,
         column_limit: int = DEFAULT_COLUMN_LIMIT,
+        pinned_column_indices: list[int] | None = None,
         request_id: str | None = None,
         timeout_seconds: int = 30,
     ) -> dict[str, Any]:
@@ -188,7 +189,17 @@ class ParquetExplorerEngine:
                     self._raise_if_cancelled(query_id)
                     self._row_count_cache[normalized] = total_rows
                 column_offset = min(column_offset, max(0, len(all_columns) - 1))
-                selected = all_columns[column_offset : column_offset + column_limit]
+                pinned_indices = []
+                for index in pinned_column_indices or []:
+                    if isinstance(index, int) and not isinstance(index, bool) and 0 <= index < len(all_columns) and index not in pinned_indices:
+                        pinned_indices.append(index)
+                pinned_indices = pinned_indices[: column_limit - 1]
+                available_indices = [index for index in range(len(all_columns)) if index not in pinned_indices]
+                column_offset = min(column_offset, max(0, len(available_indices) - 1))
+                window_limit = column_limit - len(pinned_indices)
+                window_indices = available_indices[column_offset : column_offset + window_limit]
+                selected_indices = pinned_indices + window_indices
+                selected = [{**all_columns[index], "index": index} for index in selected_indices]
                 projection = ", ".join(_quote_identifier(item["name"]) for item in selected)
                 cursor = self._connection.execute(
                     f"SELECT {projection} FROM ({normalized}) AS __smoking_data_query "
@@ -233,7 +244,9 @@ class ParquetExplorerEngine:
             "column_limit": column_limit,
             "total_columns": len(all_columns),
             "has_previous_columns": column_offset > 0,
-            "has_more_columns": column_offset + len(selected) < len(all_columns),
+            "has_more_columns": column_offset + len(window_indices) < len(available_indices),
+            "previous_column_offset": max(0, column_offset - window_limit),
+            "next_column_offset": column_offset + len(window_indices),
             "elapsed_ms": round((time.perf_counter() - started) * 1000, 2),
             "timeout_seconds": timeout_seconds,
         }

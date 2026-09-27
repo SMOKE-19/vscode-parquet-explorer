@@ -48,6 +48,6 @@ npm run build
 
 다른 확장이 `.parquet`의 기본 편집기로 선택되었다면 파일 탭에서 **Reopen Editor With...** → **PQ Explorer**를 선택하세요.
 
-설치 파일이 필요하면 `npm install` 후 `npm run package`를 실행합니다. 생성되는 `dist/pq-explorer-0.1.4.vsix`를 VS Code의 **Extensions: Install from VSIX**에서 설치할 수 있습니다. 이전 화면으로 돌아가려면 `dist/pq-explorer-0.1.3.vsix`를 다시 설치하세요. 이전 버전의 VSIX도 `dist/`에 보관합니다.
+설치 파일이 필요하면 `npm install` 후 `npm run package`를 실행합니다. 생성되는 `dist/pq-explorer-0.1.7.vsix`를 VS Code의 **Extensions: Install from VSIX**에서 설치할 수 있습니다. 이전 화면으로 돌아가려면 `dist/pq-explorer-0.1.6.vsix`를 다시 설치하세요. 이전 버전의 VSIX도 `dist/`에 보관합니다.
 
 GitHub Release에 첨부된 VSIX도 다운로드한 뒤 VS Code에서 `Ctrl+Shift+P` → **Extensions: Install from VSIX...**로 설치할 수 있습니다. VSIX 설치는 자동 업데이트되지 않으므로 새 버전은 다시 설치해야 합니다.
