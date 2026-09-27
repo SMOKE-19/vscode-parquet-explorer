@@ -22,12 +22,19 @@
       <div><span>원본 전체 행</span><strong id="source-total">—</strong></div>
       <div><span>SQL 결과 전체 행</span><strong id="query-total">—</strong></div>
     </div>
-    <label for="sql">SQL</label>
+    <div class="sql-heading">
+      <label for="sql-editor">SQL</label>
+      <div class="sql-actions">
+        <button id="lint">SQL 검사</button>
+        <button id="save-favorite">SQL 저장</button>
+        <button id="pick-favorite">즐겨찾기</button>
+      </div>
+    </div>
     <div id="sql-editor" aria-label="SQL 편집기"></div>
     <div class="toolbar">
       <button id="run" class="primary">실행 <small>Ctrl+Enter</small></button>
-      <button id="lint">SQL 검사</button>
       <label>행 <select id="page-size"><option>25</option><option selected>50</option><option>100</option><option>200</option></select></label>
+      <label>칼럼 <select id="column-limit"><option>5</option><option>10</option><option selected>20</option><option>40</option><option>100</option></select></label>
       <span id="status" role="status"></span>
     </div>
     <div id="table-wrap" class="table-wrap"><div class="empty">결과를 기다리는 중입니다…</div></div>
@@ -36,6 +43,15 @@
       <div><button id="previous-page">↑ 이전 행</button><span id="row-range">—</span><button id="next-page">다음 행 ↓</button></div>
     </footer>
   </main>
+  <section id="favorites-dialog" class="favorites-dialog" role="dialog" aria-modal="true" aria-labelledby="favorites-title" hidden>
+    <div class="favorites-card">
+      <div class="favorites-heading"><h2 id="favorites-title">SQL 즐겨찾기</h2><button id="favorites-close" type="button" aria-label="즐겨찾기 닫기">✕</button></div>
+      <div class="favorites-path"><span>백업 폴더</span><code id="favorites-path"></code><button id="favorites-copy" type="button">경로 복사</button></div>
+      <div class="favorites-controls"><input id="favorites-search" type="search" aria-label="즐겨찾기 검색" placeholder="별칭, 설명, SQL 검색"><label>정렬 <select id="favorites-sort"><option value="frequent">자주 사용</option><option value="used">최근 사용</option><option value="updated">최근 수정</option><option value="alias">별칭</option></select></label></div>
+      <div id="favorites-error" class="favorites-error" role="status"></div>
+      <div id="favorites-list" class="favorites-list" role="list"></div>
+    </div>
+  </section>
   <script nonce="__NONCE__" src="__SQL_EDITOR_URI__"></script>
   <script nonce="__NONCE__" src="__SCRIPT_URI__"></script>
 </body>

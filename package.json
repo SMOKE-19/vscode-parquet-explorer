@@ -81,10 +81,10 @@
     }
   },
   "scripts": {
-    "check": "node --check extension.js && node --check bridge.js && node --check media/explorer.js && node --check media/sql-editor.source.mjs",
+    "check": "node --check extension.js && node --check favorites.js && node --check bridge.js && node --check media/explorer.js && node --check media/sql-editor.source.mjs",
     "build": "esbuild media/sql-editor.source.mjs --bundle --format=iife --platform=browser --target=es2022 --minify --outfile=media/sql-editor.js",
     "vscode:prepublish": "npm run build",
     "test": "npm run build && node --test tests/*.test.js",
-    "package": "vsce package --out pq-explorer-0.1.3.vsix"
+    "package": "vsce package --out dist/pq-explorer-0.1.3.vsix"
   }
 }

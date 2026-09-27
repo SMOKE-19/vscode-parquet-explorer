@@ -3,6 +3,7 @@ tests/**
 README.md
 dist/**
 node_modules/**
+.venv/**
 *.vsix
 .gitignore
 python/__pycache__/**

@@ -18,6 +18,10 @@ const colors = HighlightStyle.define([
 const theme = EditorView.theme({
   "&": { color: "var(--vscode-editor-foreground)", backgroundColor: "var(--vscode-editor-background)" },
   ".cm-content": { caretColor: "var(--vscode-editorCursor-foreground)" },
+  ".cm-cursor, .cm-dropCursor": {
+    borderLeftColor: "var(--vscode-editorCursor-foreground, #aeafad)",
+    borderLeftWidth: "2px",
+  },
   ".cm-gutters": {
     color: "var(--vscode-editorLineNumber-foreground)",
     backgroundColor: "var(--vscode-editorGutter-background, var(--vscode-editor-background))",
@@ -60,6 +64,7 @@ window.PQSqlEditor = {
     });
     return {
       getValue: () => view.state.doc.toString(),
+      setValue: (value) => view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: value } }),
       applyLintResult: (result) => view.dispatch(setDiagnostics(view.state, diagnosticsFor(view.state, result))),
       focus: () => view.focus(),
       destroy: () => view.destroy(),

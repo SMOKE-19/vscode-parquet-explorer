@@ -21,7 +21,7 @@ MAX_PAGE_SIZE = 200
 DEFAULT_COLUMN_LIMIT = 40
 MAX_COLUMN_LIMIT = 100
 MAX_SQL_LENGTH = 100_000
-_ALLOWED_PREFIX = re.compile(r"^(?:select|with|from|values)\b", re.IGNORECASE)
+_ALLOWED_PREFIX = re.compile(r"^(?:select|with|from|values|describe\s+select)\b", re.IGNORECASE)
 _BLOCKED_EXTERNAL_FUNCTION = re.compile(
     r"\b(?:read_(?:csv|json|parquet|text|blob)|"
     r"(?:parquet|csv|json|sqlite|postgres|mysql)_scan|glob|attach)\b",
@@ -278,7 +278,7 @@ class ParquetExplorerEngine:
         normalized = str(statement.query).strip().rstrip(";").strip()
         without_comments = re.sub(r"^(?:\s|--[^\n]*\n|/\*.*?\*/)*", "", normalized, flags=re.S)
         if not _ALLOWED_PREFIX.match(without_comments):
-            raise ParquetExplorerError("SELECT, WITH, FROM 또는 VALUES query만 실행할 수 있습니다.")
+            raise ParquetExplorerError("SELECT, WITH, FROM, VALUES 또는 DESCRIBE SELECT query만 실행할 수 있습니다.")
         if _BLOCKED_EXTERNAL_FUNCTION.search(normalized):
             raise ParquetExplorerError(
                 "Explorer SQL에서는 외부 file/database를 여는 함수를 사용할 수 없습니다."

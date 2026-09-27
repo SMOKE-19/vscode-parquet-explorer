@@ -7,6 +7,11 @@ let nextId = 1;
 let page = 0;
 let columnOffset = 0;
 let result;
+let favoriteId;
+let favorites = [];
+let colorQuerySql;
+const columnColors = new Map();
+const CATEGORY_HUES = [210, 30, 150, 330, 90, 270, 0, 180];
 const sqlEditor = window.PQSqlEditor.create($("sql-editor"), {
   onRun: () => query(),
   onLint: (sql) => request("lint", { sql }),
@@ -40,8 +45,150 @@ function formatBytes(value) {
   return `${unit === 0 ? size.toLocaleString() : size.toFixed(2)} ${units[unit]}`;
 }
 
+function categoryKey(value) {
+  if (value === null) return "null";
+  return `${typeof value}:${typeof value === "object" ? JSON.stringify(value) : value}`;
+}
+
+function categoryColors(rows, column, columnIndex) {
+  if (rows.length < 2) return null;
+  const absoluteIndex = result.column_offset + columnIndex;
+  let colors = columnColors.get(absoluteIndex);
+  const keys = new Set();
+  for (const row of rows) keys.add(categoryKey(row[columnIndex]));
+  if (keys.size === rows.length) return null;
+  if (!colors) {
+    colors = new Map();
+    columnColors.set(absoluteIndex, colors);
+  }
+  let rotation = absoluteIndex;
+  for (const letter of column.name) rotation = (rotation * 33 + letter.charCodeAt(0)) % 360;
+  for (const key of keys) {
+    if (!colors.has(key)) {
+      const index = colors.size;
+      const hue = index < CATEGORY_HUES.length
+        ? CATEGORY_HUES[index]
+        : (315 + (index - CATEGORY_HUES.length) * 137.508) % 360;
+      colors.set(key, Math.round((hue + rotation) % 360));
+    }
+  }
+  return colors;
+}
+
+function favoriteError(error) {
+  $("favorites-error").textContent = String(error.message || error);
+}
+
+function renderFavorites() {
+  const list = $("favorites-list");
+  list.replaceChildren();
+  const term = $("favorites-search").value.trim().toLocaleLowerCase();
+  const sort = $("favorites-sort").value;
+  const visible = favorites.filter((item) => [item.alias, item.description, item.preview]
+    .some((value) => String(value || "").toLocaleLowerCase().includes(term)));
+  visible.sort((a, b) => {
+    if (Boolean(a.pinned) !== Boolean(b.pinned)) return a.pinned ? -1 : 1;
+    if (sort === "alias") return a.alias.localeCompare(b.alias);
+    const key = { frequent: "useCount", used: "lastUsedAt", updated: "updatedAt" }[sort];
+    const difference = sort === "frequent" ? (b[key] || 0) - (a[key] || 0) : String(b[key] || "").localeCompare(String(a[key] || ""));
+    return difference || String(b.updatedAt || "").localeCompare(String(a.updatedAt || ""));
+  });
+  if (!visible.length) {
+    const empty = document.createElement("div");
+    empty.className = "empty";
+    empty.textContent = term ? "검색 결과가 없습니다." : "저장된 SQL 즐겨찾기가 없습니다.";
+    list.append(empty);
+    return;
+  }
+  for (const item of visible) {
+    const row = document.createElement("div");
+    row.className = "favorite-item";
+    row.setAttribute("role", "listitem");
+    const pin = document.createElement("button");
+    pin.type = "button";
+    pin.className = "favorite-pin";
+    pin.textContent = item.pinned ? "★" : "☆";
+    pin.setAttribute("aria-pressed", String(Boolean(item.pinned)));
+    pin.setAttribute("aria-label", item.pinned ? `${item.alias} 고정 해제` : `${item.alias} 상단 고정`);
+    pin.title = item.pinned ? "고정 해제" : "상단 고정";
+    pin.addEventListener("click", async () => {
+      pin.disabled = true;
+      try {
+        const updated = await request("favorites.pin", { id: item.id });
+        favorites = favorites.map((entry) => entry.id === item.id ? updated : entry);
+        renderFavorites();
+      } catch (error) { favoriteError(error); pin.disabled = false; }
+    });
+    const content = document.createElement("button");
+    content.type = "button";
+    content.className = "favorite-content";
+    const alias = document.createElement("strong");
+    alias.textContent = item.alias;
+    content.append(alias);
+    if (item.description) {
+      const description = document.createElement("small");
+      description.textContent = item.description;
+      description.title = item.description;
+      content.append(description);
+    }
+    const code = document.createElement("small");
+    code.textContent = item.preview || "";
+    code.title = item.preview || "";
+    content.append(code);
+    content.addEventListener("click", async () => {
+      try {
+        const picked = await request("favorites.get", { id: item.id });
+        favoriteId = picked.id;
+        sqlEditor.setValue(picked.sql);
+        closeFavorites();
+        sqlEditor.focus();
+        status(`즐겨찾기 선택: ${picked.alias}`);
+      } catch (error) { favoriteError(error); }
+    });
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.className = "favorite-delete";
+    remove.textContent = "✕";
+    remove.title = "즐겨찾기 삭제";
+    remove.setAttribute("aria-label", `${item.alias} 삭제`);
+    remove.addEventListener("click", async () => {
+      try {
+        const response = await request("favorites.remove", { id: item.id });
+        if (!response.removed) return;
+        favorites = favorites.filter((entry) => entry.id !== item.id);
+        if (favoriteId === item.id) favoriteId = undefined;
+        renderFavorites();
+      } catch (error) { favoriteError(error); }
+    });
+    row.append(pin, content, remove);
+    list.append(row);
+  }
+}
+
+function closeFavorites() {
+  $("favorites-dialog").hidden = true;
+  $("pick-favorite").focus();
+}
+
+async function openFavorites() {
+  $("favorites-dialog").hidden = false;
+  $("favorites-error").textContent = "";
+  $("favorites-search").focus();
+  try {
+    const response = await request("favorites.list");
+    $("favorites-path").textContent = response.folder;
+    favorites = response.items;
+    renderFavorites();
+  } catch (error) { favoriteError(error); }
+}
+
 function render(resultValue) {
   result = resultValue;
+  if (colorQuerySql !== result.sql) {
+    colorQuerySql = result.sql;
+    columnColors.clear();
+  }
+  const palettes = result.columns.map((column, index) => categoryColors(result.rows, column, index));
   const wrap = $("table-wrap");
   wrap.replaceChildren();
   if (!result.rows.length) {
@@ -57,9 +204,10 @@ function render(resultValue) {
     number.className = "row-number";
     number.textContent = "#";
     header.append(number);
-    for (const column of result.columns) {
+    for (const [index, column] of result.columns.entries()) {
       const th = document.createElement("th");
       th.textContent = column.name;
+      if (palettes[index]) th.title = "반복 값 색상은 현재 페이지 기준으로 적용됩니다.";
       const kind = document.createElement("small");
       kind.textContent = column.type;
       th.append(kind);
@@ -74,9 +222,14 @@ function render(resultValue) {
       numberCell.className = "row-number";
       numberCell.textContent = String(result.row_offset + rowIndex + 1);
       tr.append(numberCell);
-      row.forEach((value) => {
+      row.forEach((value, index) => {
         const td = document.createElement("td");
-        if (value === null) td.className = "null";
+        const hue = palettes[index]?.get(categoryKey(value));
+        if (hue !== undefined) {
+          td.classList.add("category-cell");
+          td.style.setProperty("--pq-category-hue", String(hue));
+        }
+        if (value === null) td.classList.add("null");
         const text = formatCell(value);
         if (Array.isArray(value)) {
           const count = document.createElement("span");
@@ -113,10 +266,11 @@ async function query(nextPage = 0, nextColumnOffset = 0) {
   try {
     const response = await request("query", {
       sql: sqlEditor.getValue(),
+      favorite_id: favoriteId,
       page: nextPage,
       page_size: Number($("page-size").value),
       column_offset: nextColumnOffset,
-      column_limit: 20,
+      column_limit: Number($("column-limit").value),
       timeout_seconds: 30,
     });
     page = nextPage;
@@ -131,6 +285,8 @@ async function query(nextPage = 0, nextColumnOffset = 0) {
 
 async function refreshMetadata() {
   const metadata = await request("meta");
+  columnColors.clear();
+  colorQuerySql = undefined;
   $("source").value = metadata.source_path;
   $("meta").textContent = `${metadata.row_count.toLocaleString()} rows · ${metadata.column_count.toLocaleString()} columns · ${metadata.file_count.toLocaleString()} file(s) · ${formatBytes(metadata.file_bytes)}`;
   $("source-total").textContent = metadata.row_count.toLocaleString();
@@ -157,6 +313,28 @@ window.addEventListener("message", async (event) => {
 });
 
 $("run").addEventListener("click", () => query());
+$("save-favorite").addEventListener("click", async () => {
+  try {
+    const saved = await request("favorites.save", { id: favoriteId, sql: sqlEditor.getValue() });
+    if (!saved.cancelled) { favoriteId = saved.id; status(`즐겨찾기 저장: ${saved.alias}`); }
+  } catch (error) { status(String(error.message || error), true); }
+});
+$("pick-favorite").addEventListener("click", async () => {
+  await openFavorites();
+});
+$("favorites-close").addEventListener("click", closeFavorites);
+$("favorites-dialog").addEventListener("click", (event) => {
+  if (event.target === $("favorites-dialog")) closeFavorites();
+});
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && !$("favorites-dialog").hidden) closeFavorites();
+});
+$("favorites-search").addEventListener("input", renderFavorites);
+$("favorites-sort").addEventListener("change", renderFavorites);
+$("favorites-copy").addEventListener("click", async () => {
+  try { await request("favorites.copyPath"); $("favorites-error").textContent = "백업 폴더 경로를 복사했습니다."; }
+  catch (error) { favoriteError(error); }
+});
 $("lint").addEventListener("click", async () => {
   try {
     const response = await request("lint", { sql: sqlEditor.getValue() });
@@ -171,7 +349,8 @@ $("open-source").addEventListener("click", async () => {
 });
 $("previous-page").addEventListener("click", () => query(Math.max(0, page - 1), columnOffset));
 $("next-page").addEventListener("click", () => query(page + 1, columnOffset));
-$("previous-columns").addEventListener("click", () => query(page, Math.max(0, columnOffset - 20)));
-$("next-columns").addEventListener("click", () => query(page, columnOffset + 20));
+$("previous-columns").addEventListener("click", () => query(page, Math.max(0, columnOffset - Number($("column-limit").value))));
+$("next-columns").addEventListener("click", () => query(page, columnOffset + Number($("column-limit").value)));
 $("page-size").addEventListener("change", () => query(0, columnOffset));
+$("column-limit").addEventListener("change", () => query(0, 0));
 vscode.postMessage({ type: "loaded" });
