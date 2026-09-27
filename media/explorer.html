@@ -10,7 +10,6 @@
 <body>
   <header>
     <h1>PQ Explorer</h1>
-    <p>DuckDB · 읽기 전용</p>
   </header>
   <main>
     <div class="source-row">
@@ -18,10 +17,6 @@
       <button id="open-source">소스 열기</button>
     </div>
     <div id="meta" class="meta">DuckDB 작업자를 시작하는 중입니다…</div>
-    <div class="counts" aria-live="polite">
-      <div><span>원본 전체 행</span><strong id="source-total">—</strong></div>
-      <div><span>SQL 결과 전체 행</span><strong id="query-total">—</strong></div>
-    </div>
     <div class="sql-heading">
       <label for="sql-editor">SQL</label>
       <div class="sql-actions">
@@ -33,14 +28,26 @@
     <div id="sql-editor" aria-label="SQL 편집기"></div>
     <div class="toolbar">
       <button id="run" class="primary">실행 <small>Ctrl+Enter</small></button>
-      <label>행 <select id="page-size"><option>25</option><option selected>50</option><option>100</option><option>200</option></select></label>
-      <label>칼럼 <select id="column-limit"><option>5</option><option>10</option><option selected>20</option><option>40</option><option>100</option></select></label>
       <span id="status" role="status"></span>
     </div>
     <div id="table-wrap" class="table-wrap"><div class="empty">결과를 기다리는 중입니다…</div></div>
-    <footer>
-      <div><button id="previous-columns">← 이전 칼럼</button><span id="column-range">—</span><button id="next-columns">다음 칼럼 →</button></div>
-      <div><button id="previous-page">↑ 이전 행</button><span id="row-range">—</span><button id="next-page">다음 행 ↓</button></div>
+    <footer class="table-navigation">
+      <div class="nav-group">
+        <span>칼럼</span>
+        <button id="previous-columns" aria-label="이전 칼럼" title="이전 칼럼">←</button>
+        <input id="column-position" type="number" min="1" aria-label="마지막 칼럼 번호" title="이동할 칼럼 번호를 입력하세요" disabled>
+        <span class="nav-total">/ <span id="column-total">—</span></span>
+        <button id="next-columns" aria-label="다음 칼럼" title="다음 칼럼">→</button>
+        <label>표시 <select id="column-limit"><option>5</option><option>10</option><option selected>20</option><option>40</option><option>100</option></select></label>
+      </div>
+      <div class="nav-group">
+        <span>행</span>
+        <button id="previous-page" aria-label="이전 행" title="이전 행">↑</button>
+        <input id="row-position" type="number" min="1" aria-label="마지막 행 번호" title="이동할 행 번호를 입력하세요" disabled>
+        <span class="nav-total">/ <span id="row-total">—</span></span>
+        <button id="next-page" aria-label="다음 행" title="다음 행">↓</button>
+        <label>표시 <select id="page-size"><option>25</option><option selected>50</option><option>100</option><option>200</option></select></label>
+      </div>
     </footer>
   </main>
   <section id="favorites-dialog" class="favorites-dialog" role="dialog" aria-modal="true" aria-labelledby="favorites-title" hidden>

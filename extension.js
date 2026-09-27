@@ -113,7 +113,9 @@ async function attachExplorer(context, panel, source, favorites) {
       const payload = message.operation === "query" ? { ...message.payload } : message.payload;
       if (message.operation === "query") delete payload.favorite_id;
       const result = await bridge.request(message.operation, payload);
-      if (message.operation === "query" && message.payload?.page === 0 && message.payload?.column_offset === 0) {
+      const firstRows = message.payload?.row_offset === 0
+        || (message.payload?.row_offset === undefined && (message.payload?.page ?? 0) === 0);
+      if (message.operation === "query" && firstRows && message.payload?.column_offset === 0) {
         try { await favorites.recordUse(message.payload.favorite_id, message.payload.sql); }
         catch (error) { console.warn("PQ Explorer: 즐겨찾기 사용 횟수를 저장하지 못했습니다.", error); }
       }

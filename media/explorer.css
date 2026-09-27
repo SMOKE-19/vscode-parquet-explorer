@@ -5,7 +5,7 @@ body.vscode-dark, body.vscode-high-contrast { --pq-sql-keyword: #569cd6; --pq-sq
 body { margin: 0; font-size: 13px; }
 header { padding: 18px 22px 8px; border-bottom: 1px solid var(--vscode-panel-border); }
 h1 { margin: 0; font-size: 18px; }
-header p { margin: 4px 0 10px; color: var(--vscode-descriptionForeground); }
+header { padding-bottom: 14px; }
 main { padding: 16px 22px; }
 .source-row, .toolbar, footer, footer div { display: flex; align-items: center; gap: 8px; }
 .source-row input { flex: 1; min-width: 0; }
@@ -15,10 +15,6 @@ input, textarea, select { color: var(--vscode-input-foreground); background: var
 #sql-editor .cm-scroller { overflow: auto; }
 #sql-editor .cm-content { min-height: 120px; }
 #sql-editor .cm-tooltip { z-index: 10; }
-.counts { display: flex; gap: 10px; flex-wrap: wrap; margin: 8px 0 14px; }
-.counts div { min-width: 155px; padding: 8px 12px; border: 1px solid var(--vscode-panel-border); border-radius: 4px; }
-.counts span { display: block; color: var(--vscode-descriptionForeground); font-size: 12px; }
-.counts strong { display: block; margin-top: 2px; font-size: 18px; font-variant-numeric: tabular-nums; }
 button { white-space: nowrap; padding: 6px 10px; color: var(--vscode-button-secondaryForeground); background: var(--vscode-button-secondaryBackground); border: 0; cursor: pointer; }
 button:hover { background: var(--vscode-button-secondaryHoverBackground); }
 button.primary { color: var(--vscode-button-foreground); background: var(--vscode-button-background); }
@@ -45,8 +41,12 @@ td.null { color: var(--vscode-descriptionForeground); font-style: italic; }
 .list-count { display: inline-block; margin-right: 7px; padding: 1px 5px; border: 1px solid var(--vscode-badge-background); border-radius: 3px; color: var(--vscode-badge-foreground); background: var(--vscode-badge-background); font-size: 11px; font-weight: 600; }
 td details { max-width: 320px; }
 td details pre { white-space: pre-wrap; max-height: 250px; overflow: auto; }
-footer { justify-content: space-between; flex-wrap: wrap; padding-top: 10px; }
-footer span { min-width: 90px; text-align: center; }
+.table-navigation { justify-content: space-between; flex-wrap: wrap; padding-top: 10px; }
+.nav-group { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
+.nav-group button { min-width: 28px; padding: 5px 7px; }
+.nav-group input { width: 70px; min-width: 0; text-align: right; font-variant-numeric: tabular-nums; }
+.nav-group input::-webkit-inner-spin-button, .nav-group input::-webkit-outer-spin-button { appearance: none; margin: 0; }
+.nav-total { color: var(--vscode-descriptionForeground); white-space: nowrap; font-variant-numeric: tabular-nums; }
 .favorites-dialog[hidden] { display: none; }
 .favorites-dialog { position: fixed; inset: 0; z-index: 100; display: flex; align-items: flex-start; justify-content: center; padding: min(8vh, 50px) 16px 16px; background: rgba(0, 0, 0, .55); }
 .favorites-card { width: min(700px, 100%); max-height: 85vh; display: flex; flex-direction: column; padding: 16px; color: var(--vscode-foreground); background: var(--vscode-editor-background); border: 1px solid var(--vscode-panel-border); box-shadow: 0 12px 36px rgba(0, 0, 0, .35); }

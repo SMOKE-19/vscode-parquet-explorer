@@ -7,7 +7,7 @@ VS Code 안에서 Parquet 파일 또는 dataset 폴더를 DuckDB로 조회합니
 1. 조회할 workspace의 Python 3.10+ 환경에 `duckdb>=1.4,<2`를 설치합니다.
 2. VS Code 확장 개발 호스트에서 이 폴더를 확장으로 실행하거나 VSIX로 설치합니다.
 3. 탐색기의 `.parquet` 파일을 열면 해당 **파일 하나**가 PQ Explorer의 기본 편집기로 표시됩니다. 우클릭의 **PQ Explorer: Open Parquet** 명령으로도 열 수 있습니다. 상단 경로에 폴더를 입력하고 **소스 열기**를 누르면 그 폴더 아래의 Parquet을 데이터셋으로 조회합니다.
-4. 원본 전체 행 수, 칼럼 수, 파일 수, 파일 크기 합계와 현재 SQL 결과의 전체 행 수를 확인합니다. 결과는 기본 50행씩 페이지로 조회하며, 표는 최대 약 10행 높이로 표시하고 내부에서 스크롤합니다. SQL을 바꾼 뒤 `Ctrl+Enter`로 재실행할 수 있습니다. 리스트 값에는 원소 수가 표시됩니다.
+4. 표 아래에서 SQL 결과의 전체 행·칼럼 수를 확인합니다. 기본 50행·20칼럼씩 조회하며, 표는 최대 약 10행 높이로 표시하고 내부에서 스크롤합니다. 현재 범위의 마지막 번호를 입력해 원하는 행·칼럼으로 이동할 수 있습니다. SQL을 바꾼 뒤 `Ctrl+Enter`로 재실행할 수 있습니다. 리스트 값에는 원소 수가 표시됩니다.
 
 SQL 제목 오른쪽의 **SQL 저장**으로 별칭과 설명을 붙여 즐겨찾기를 만들 수 있습니다. **즐겨찾기**에서 별칭·설명·SQL 미리보기를 확인하고 SQL을 다시 불러옵니다. 항목 왼쪽 별표를 누르면 상단에 고정되고, 다시 누르면 고정이 해제됩니다. 고정 항목 아래는 기본적으로 실행 횟수 순이며, 정렬 메뉴로 최근 사용·최근 수정·별칭 순서를 선택할 수 있습니다. 항목 오른쪽 삭제 버튼으로 삭제합니다. 저장한 SQL을 수정한 뒤 다시 저장하면 기존 항목 수정 또는 새 항목 저장을 고를 수 있습니다. 최대 100개까지 저장하며, 성공적으로 실행한 저장 SQL만 사용 횟수에 반영합니다.
 
@@ -48,6 +48,6 @@ npm run build
 
 다른 확장이 `.parquet`의 기본 편집기로 선택되었다면 파일 탭에서 **Reopen Editor With...** → **PQ Explorer**를 선택하세요.
 
-설치 파일이 필요하면 `npm install` 후 `npm run package`를 실행합니다. 생성되는 `dist/pq-explorer-0.1.3.vsix`를 VS Code의 **Extensions: Install from VSIX**에서 설치할 수 있습니다. 이전 버전의 VSIX도 `dist/`에 보관합니다.
+설치 파일이 필요하면 `npm install` 후 `npm run package`를 실행합니다. 생성되는 `dist/pq-explorer-0.1.4.vsix`를 VS Code의 **Extensions: Install from VSIX**에서 설치할 수 있습니다. 이전 화면으로 돌아가려면 `dist/pq-explorer-0.1.3.vsix`를 다시 설치하세요. 이전 버전의 VSIX도 `dist/`에 보관합니다.
 
 GitHub Release에 첨부된 VSIX도 다운로드한 뒤 VS Code에서 `Ctrl+Shift+P` → **Extensions: Install from VSIX...**로 설치할 수 있습니다. VSIX 설치는 자동 업데이트되지 않으므로 새 버전은 다시 설치해야 합니다.

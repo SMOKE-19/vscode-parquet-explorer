@@ -141,6 +141,7 @@ class ParquetExplorerEngine:
         *,
         page: int = 0,
         page_size: int = DEFAULT_PAGE_SIZE,
+        row_offset: int | None = None,
         column_offset: int = 0,
         column_limit: int = DEFAULT_COLUMN_LIMIT,
         request_id: str | None = None,
@@ -148,6 +149,8 @@ class ParquetExplorerEngine:
     ) -> dict[str, Any]:
         page = max(0, int(page))
         page_size = min(MAX_PAGE_SIZE, max(1, int(page_size)))
+        offset = page * page_size if row_offset is None else max(0, int(row_offset))
+        page = offset // page_size
         column_offset = max(0, int(column_offset))
         column_limit = min(MAX_COLUMN_LIMIT, max(1, int(column_limit)))
         query_id = request_id or uuid.uuid4().hex
@@ -172,7 +175,7 @@ class ParquetExplorerEngine:
                 ]
                 if not all_columns:
                     return {
-                        **_empty_query_result(sql, page, page_size, column_offset, column_limit),
+                        **_empty_query_result(sql, page, page_size, offset, column_offset, column_limit),
                         "request_id": query_id,
                     }
                 total_rows = self._row_count_cache.get(normalized)
@@ -187,7 +190,6 @@ class ParquetExplorerEngine:
                 column_offset = min(column_offset, max(0, len(all_columns) - 1))
                 selected = all_columns[column_offset : column_offset + column_limit]
                 projection = ", ".join(_quote_identifier(item["name"]) for item in selected)
-                offset = page * page_size
                 cursor = self._connection.execute(
                     f"SELECT {projection} FROM ({normalized}) AS __smoking_data_query "
                     f"LIMIT {page_size} OFFSET {offset}"
@@ -223,7 +225,7 @@ class ParquetExplorerEngine:
             "page": page,
             "page_size": page_size,
             "has_more": has_more,
-            "row_offset": page * page_size,
+            "row_offset": offset,
             "total_rows": total_rows,
             "rows": rows,
             "columns": selected,
@@ -335,7 +337,7 @@ def _error_position(message: str) -> dict[str, int] | None:
 
 
 def _empty_query_result(
-    sql: str, page: int, page_size: int, column_offset: int, column_limit: int
+    sql: str, page: int, page_size: int, row_offset: int, column_offset: int, column_limit: int
 ) -> dict[str, Any]:
     return {
         "ok": True,
@@ -343,7 +345,7 @@ def _empty_query_result(
         "page": page,
         "page_size": page_size,
         "has_more": False,
-        "row_offset": page * page_size,
+        "row_offset": row_offset,
         "total_rows": 0,
         "rows": [],
         "columns": [],

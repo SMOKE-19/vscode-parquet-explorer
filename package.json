@@ -2,7 +2,7 @@
   "name": "pq-explorer",
   "displayName": "PQ Explorer",
   "description": "Read-only DuckDB Parquet Explorer for VS Code.",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "publisher": "smoke-19",
   "repository": {
     "type": "git",
@@ -85,6 +85,6 @@
     "build": "esbuild media/sql-editor.source.mjs --bundle --format=iife --platform=browser --target=es2022 --minify --outfile=media/sql-editor.js",
     "vscode:prepublish": "npm run build",
     "test": "npm run build && node --test tests/*.test.js",
-    "package": "vsce package --out dist/pq-explorer-0.1.3.vsix"
+    "package": "vsce package --out dist/pq-explorer-0.1.4.vsix"
   }
 }

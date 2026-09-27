@@ -4,7 +4,8 @@ const vscode = acquireVsCodeApi();
 const $ = (id) => document.getElementById(id);
 const pending = new Map();
 let nextId = 1;
-let page = 0;
+let querySequence = 0;
+let rowOffset = 0;
 let columnOffset = 0;
 let result;
 let favoriteId;
@@ -249,10 +250,15 @@ function render(resultValue) {
   }
   const endRow = result.row_offset + result.rows.length;
   const endColumn = result.column_offset + result.columns.length;
-  $("row-range").textContent = `${result.total_rows ? (result.row_offset + 1).toLocaleString() : 0}–${endRow.toLocaleString()} / ${result.total_rows.toLocaleString()}`;
-  $("column-range").textContent = `${result.total_columns ? result.column_offset + 1 : 0}–${endColumn} / ${result.total_columns}`;
-  $("query-total").textContent = result.total_rows.toLocaleString();
-  $("previous-page").disabled = page === 0;
+  $("row-position").value = result.total_rows ? String(endRow) : "";
+  $("row-position").max = String(result.total_rows);
+  $("row-position").disabled = result.total_rows === 0;
+  $("row-total").textContent = result.total_rows.toLocaleString();
+  $("column-position").value = result.total_columns ? String(endColumn) : "";
+  $("column-position").max = String(result.total_columns);
+  $("column-position").disabled = result.total_columns === 0;
+  $("column-total").textContent = result.total_columns.toLocaleString();
+  $("previous-page").disabled = result.row_offset === 0;
   $("next-page").disabled = !result.has_more;
   $("next-page").title = result.has_more ? "다음 페이지" : "현재 SQL 결과의 마지막 페이지입니다.";
   $("previous-columns").disabled = !result.has_previous_columns;
@@ -260,26 +266,28 @@ function render(resultValue) {
   status(`${result.elapsed_ms} ms`);
 }
 
-async function query(nextPage = 0, nextColumnOffset = 0) {
+async function query(nextRowOffset = 0, nextColumnOffset = 0, limits = {}) {
+  const sequence = ++querySequence;
   status("DuckDB 조회 중…");
   $("run").disabled = true;
   try {
     const response = await request("query", {
       sql: sqlEditor.getValue(),
       favorite_id: favoriteId,
-      page: nextPage,
-      page_size: Number($("page-size").value),
+      row_offset: nextRowOffset,
+      page_size: limits.rows || Number($("page-size").value),
       column_offset: nextColumnOffset,
-      column_limit: Number($("column-limit").value),
+      column_limit: limits.columns || Number($("column-limit").value),
       timeout_seconds: 30,
     });
-    page = nextPage;
-    columnOffset = nextColumnOffset;
+    if (sequence !== querySequence) return;
+    rowOffset = response.row_offset;
+    columnOffset = response.column_offset;
     render(response);
   } catch (error) {
-    status(String(error.message || error), true);
+    if (sequence === querySequence) status(String(error.message || error), true);
   } finally {
-    $("run").disabled = false;
+    if (sequence === querySequence) $("run").disabled = false;
   }
 }
 
@@ -288,9 +296,26 @@ async function refreshMetadata() {
   columnColors.clear();
   colorQuerySql = undefined;
   $("source").value = metadata.source_path;
-  $("meta").textContent = `${metadata.row_count.toLocaleString()} rows · ${metadata.column_count.toLocaleString()} columns · ${metadata.file_count.toLocaleString()} file(s) · ${formatBytes(metadata.file_bytes)}`;
-  $("source-total").textContent = metadata.row_count.toLocaleString();
-  $("query-total").textContent = "—";
+  $("meta").textContent = `${metadata.file_count.toLocaleString()} file(s) · ${formatBytes(metadata.file_bytes)}`;
+}
+
+function jumpToPosition(kind) {
+  if (!result) return;
+  const rows = kind === "row";
+  const input = $(rows ? "row-position" : "column-position");
+  const total = rows ? result.total_rows : result.total_columns;
+  const currentEnd = rows ? result.row_offset + result.rows.length : result.column_offset + result.columns.length;
+  const target = Number(input.value);
+  if (!Number.isSafeInteger(target) || target < 1 || target > total) {
+    input.value = String(currentEnd);
+    status(`${rows ? "행" : "칼럼"} 번호는 1~${total.toLocaleString()} 사이여야 합니다.`, true);
+    return;
+  }
+  if (target === currentEnd) return;
+  const selectedLimit = Number($(rows ? "page-size" : "column-limit").value);
+  const limit = Math.min(selectedLimit, target);
+  if (rows) query(target - limit, columnOffset, { rows: limit });
+  else query(rowOffset, target - limit, { columns: limit });
 }
 
 window.addEventListener("message", async (event) => {
@@ -347,10 +372,23 @@ $("open-source").addEventListener("click", async () => {
   try { await request("source", { path: $("source").value }); await refreshMetadata(); await query(); }
   catch (error) { status(String(error.message || error), true); }
 });
-$("previous-page").addEventListener("click", () => query(Math.max(0, page - 1), columnOffset));
-$("next-page").addEventListener("click", () => query(page + 1, columnOffset));
-$("previous-columns").addEventListener("click", () => query(page, Math.max(0, columnOffset - Number($("column-limit").value))));
-$("next-columns").addEventListener("click", () => query(page, columnOffset + Number($("column-limit").value)));
+$("previous-page").addEventListener("click", () => {
+  const count = Math.min(rowOffset, Number($("page-size").value));
+  query(rowOffset - count, columnOffset, { rows: count });
+});
+$("next-page").addEventListener("click", () => query(rowOffset + result.rows.length, columnOffset));
+$("previous-columns").addEventListener("click", () => {
+  const count = Math.min(columnOffset, Number($("column-limit").value));
+  query(rowOffset, columnOffset - count, { columns: count });
+});
+$("next-columns").addEventListener("click", () => query(rowOffset, columnOffset + result.columns.length));
 $("page-size").addEventListener("change", () => query(0, columnOffset));
 $("column-limit").addEventListener("change", () => query(0, 0));
+for (const [id, kind] of [["row-position", "row"], ["column-position", "column"]]) {
+  const input = $(id);
+  input.addEventListener("blur", () => jumpToPosition(kind));
+  input.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") { event.preventDefault(); input.blur(); }
+  });
+}
 vscode.postMessage({ type: "loaded" });
