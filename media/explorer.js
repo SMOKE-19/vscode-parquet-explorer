@@ -5,6 +5,7 @@ const $ = (id) => document.getElementById(id);
 const pending = new Map();
 let nextId = 1;
 let querySequence = 0;
+let activeRequestId;
 let rowOffset = 0;
 let columnOffset = 0;
 let activeRowLimit = 50;
@@ -36,6 +37,7 @@ function status(message, error = false) {
 
 function formatCell(value) {
   if (value === null) return "NULL";
+  if (value?.__pq_truncated__) return value.preview;
   if (typeof value === "object") return JSON.stringify(value);
   return String(value);
 }
@@ -245,7 +247,14 @@ function render(resultValue) {
         }
         if (value === null) td.classList.add("null");
         const text = formatCell(value);
-        if (Array.isArray(value)) {
+        if (value?.__pq_truncated__) {
+          const count = document.createElement("span");
+          count.className = "list-count truncated";
+          count.textContent = "잘림";
+          const size = value.original_bytes === undefined ? `미리보기 ${formatBytes(value.preview_bytes)}` : `원본 ${formatBytes(value.original_bytes)}`;
+          count.title = `${value.type} · ${size}${value.item_count === undefined ? "" : ` · 전체 ${value.item_count.toLocaleString()}개 항목`}`;
+          td.append(count);
+        } else if (Array.isArray(value)) {
           const count = document.createElement("span");
           count.className = "list-count";
           count.textContent = `${value.length.toLocaleString()}개`;
@@ -253,7 +262,7 @@ function render(resultValue) {
           td.append(count);
         }
         td.append(document.createTextNode(text.length > 240 ? `${text.slice(0, 237)}…` : text));
-        td.title = text;
+        td.title = value?.__pq_truncated__ ? `전송 상한으로 잘림${value.item_count === undefined ? "" : ` · 전체 ${value.item_count.toLocaleString()}개 항목`}` : text;
         tr.append(td);
       });
       body.append(tr);
@@ -291,6 +300,8 @@ async function query(nextRowOffset = 0, nextColumnOffset = 0, limits = {}) {
   }
   status("DuckDB 조회 중…");
   $("run").disabled = true;
+  $("cancel").disabled = false;
+  activeRequestId = `query-${Date.now()}-${sequence}`;
   try {
     const response = await request("query", {
       sql,
@@ -300,7 +311,7 @@ async function query(nextRowOffset = 0, nextColumnOffset = 0, limits = {}) {
       column_offset: nextColumnOffset,
       column_limit: (limits.columns || activeColumnLimit) + pinnedColumns.length,
       pinned_column_indices: pinnedColumns,
-      timeout_seconds: 30,
+      request_id: activeRequestId,
     });
     if (sequence !== querySequence) return;
     rowOffset = response.row_offset;
@@ -309,7 +320,11 @@ async function query(nextRowOffset = 0, nextColumnOffset = 0, limits = {}) {
   } catch (error) {
     if (sequence === querySequence) status(String(error.message || error), true);
   } finally {
-    if (sequence === querySequence) $("run").disabled = false;
+    if (sequence === querySequence) {
+      $("run").disabled = false;
+      $("cancel").disabled = true;
+      activeRequestId = undefined;
+    }
   }
 }
 
@@ -320,7 +335,8 @@ async function refreshMetadata() {
   pinnedColumns = [];
   activeColumnLimit = Number($("column-limit").value);
   $("source").value = metadata.source_path;
-  $("meta").textContent = `${metadata.file_count.toLocaleString()} file(s) · ${formatBytes(metadata.file_bytes)} · 칼럼 ${metadata.column_count.toLocaleString()} · 행 ${metadata.row_count.toLocaleString()}`;
+  const rows = metadata.row_count == null ? "행 수는 빠른 미리보기에서 생략" : `행 ${metadata.row_count.toLocaleString()}`;
+  $("meta").textContent = `${metadata.file_count.toLocaleString()} file(s) · ${formatBytes(metadata.file_bytes)} · 칼럼 ${metadata.column_count.toLocaleString()} · ${rows}`;
 }
 
 function runQuery() {
@@ -364,6 +380,18 @@ window.addEventListener("message", async (event) => {
 });
 
 $("run").addEventListener("click", runQuery);
+$("cancel").addEventListener("click", async () => {
+  if (!activeRequestId) return;
+  $("cancel").disabled = true;
+  status("DuckDB 조회를 취소하는 중…");
+  try { await request("cancel", { request_id: activeRequestId }); }
+  catch (error) { status(String(error.message || error), true); }
+});
+$("restart-worker").addEventListener("click", async () => {
+  status("DuckDB 작업자를 재시작하는 중…");
+  try { await request("restart"); await refreshMetadata(); await query(); }
+  catch (error) { status(String(error.message || error), true); }
+});
 $("save-favorite").addEventListener("click", async () => {
   try {
     const saved = await request("favorites.save", { id: favoriteId, sql: sqlEditor.getValue() });

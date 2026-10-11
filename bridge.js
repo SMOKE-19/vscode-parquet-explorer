@@ -20,10 +20,10 @@ function pythonCommand(root, configured = "") {
   return candidates.find((candidate) => fs.existsSync(candidate)) || "python";
 }
 
-function startBridge({ python, source, root, extensionPath }) {
+function startBridge({ python, source, root, extensionPath, settings = {} }) {
   return new Promise((resolve, reject) => {
     const worker = path.join(extensionPath, "python", "worker.py");
-    const child = spawn(python, ["-u", worker, source, root], {
+    const child = spawn(python, ["-u", worker, source, root, JSON.stringify(settings)], {
       cwd: root, windowsHide: true, stdio: ["pipe", "pipe", "pipe"],
     });
     const pending = new Map();
@@ -68,7 +68,7 @@ function startBridge({ python, source, root, extensionPath }) {
     });
 
     function request(operation, payload = {}) {
-      if (!["meta", "query", "lint", "source"].includes(operation)) {
+      if (!["meta", "query", "lint", "source", "cancel"].includes(operation)) {
         return Promise.reject(new Error("지원하지 않는 요청입니다."));
       }
       if (!ready || child.exitCode !== null) {
@@ -76,9 +76,12 @@ function startBridge({ python, source, root, extensionPath }) {
       }
       return new Promise((resolveCall, rejectCall) => {
         const id = nextId++;
-        const timer = setTimeout(() => {
-          fail(new Error("DuckDB 요청 시간 초과"));
-        }, 125_000);
+        const timeoutSeconds = operation === "query" ? Number(settings.queryTimeoutSeconds) : 120;
+        const timer = timeoutSeconds > 0 ? setTimeout(() => {
+          pending.delete(id);
+          rejectCall(new Error("DuckDB 요청 응답 시간 초과"));
+          if (operation === "query") child.stdin.write(JSON.stringify({ id: nextId++, operation: "cancel", payload: { request_id: payload.request_id } }) + "\n");
+        }, (timeoutSeconds + 15) * 1000) : null;
         pending.set(id, { resolve: resolveCall, reject: rejectCall, timer });
         child.stdin.write(JSON.stringify({ id, operation, payload }) + "\n", (error) => {
           if (error) fail(error);

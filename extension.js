@@ -59,6 +59,16 @@ async function attachExplorer(context, panel, source, favorites) {
   const root = workspace?.uri.fsPath || path.dirname(source.fsPath);
   const configured = vscode.workspace.getConfiguration("pqExplorer", source).get("pythonPath", "");
   const python = pythonCommand(root, configured);
+  const configuration = vscode.workspace.getConfiguration("pqExplorer", source);
+  const settings = {
+    queryTimeoutSeconds: configuration.get("queryTimeoutSeconds", 30),
+    exactResultCount: configuration.get("exactResultCount", false),
+    memoryLimit: configuration.get("duckdbMemoryLimit", "2GB"),
+    threads: configuration.get("duckdbThreads", 2),
+    tempDirectory: configuration.get("duckdbTempDirectory", ""),
+    maxTempSize: configuration.get("duckdbMaxTempSize", "10GB"),
+    maxCellBytes: configuration.get("maxCellBytes", 65536),
+  };
   panel.webview.options = {
     enableScripts: true,
     localResourceRoots: [vscode.Uri.file(path.join(context.extensionPath, "media"))],
@@ -66,6 +76,13 @@ async function attachExplorer(context, panel, source, favorites) {
   let bridge;
   let disposed = false;
   let webviewLoaded = false;
+  async function launchBridge() {
+    if (bridge) { activeBridges.delete(bridge); bridge.stop(); bridge = undefined; }
+    const next = await startBridge({ python, source: source.fsPath, root, extensionPath: context.extensionPath, settings });
+    if (disposed) { next.stop(); return; }
+    bridge = next;
+    activeBridges.add(bridge);
+  }
   panel.onDidDispose(() => {
     disposed = true;
     if (bridge) { activeBridges.delete(bridge); bridge.stop(); }
@@ -77,6 +94,15 @@ async function attachExplorer(context, panel, source, favorites) {
       return;
     }
     if (disposed || typeof message?.id !== "number") return;
+    if (message.operation === "restart") {
+      try {
+        await launchBridge();
+        if (!disposed) panel.webview.postMessage({ id: message.id, result: { restarted: true } });
+      } catch (error) {
+        if (!disposed) panel.webview.postMessage({ id: message.id, error: String(error.message || error) });
+      }
+      return;
+    }
     try {
       if (message.operation?.startsWith("favorites.")) {
         let result;
@@ -110,7 +136,11 @@ async function attachExplorer(context, panel, source, favorites) {
       return;
     }
     try {
-      const payload = message.operation === "query" ? { ...message.payload } : message.payload;
+      const payload = message.operation === "query" ? {
+        ...message.payload,
+        timeout_seconds: settings.queryTimeoutSeconds,
+        include_total_rows: settings.exactResultCount,
+      } : message.payload;
       if (message.operation === "query") delete payload.favorite_id;
       const result = await bridge.request(message.operation, payload);
       const firstRows = message.payload?.row_offset === 0
@@ -126,9 +156,8 @@ async function attachExplorer(context, panel, source, favorites) {
   });
   panel.webview.html = renderHtml(context.extensionPath, panel.webview);
   try {
-    bridge = await startBridge({ python, source: source.fsPath, root, extensionPath: context.extensionPath });
-    if (disposed) { bridge.stop(); return; }
-    activeBridges.add(bridge);
+    await launchBridge();
+    if (disposed) return;
     if (webviewLoaded) panel.webview.postMessage({ type: "ready" });
   } catch (error) {
     if (!disposed) panel.webview.postMessage({ type: "startupError", error: `${error.message}\nPython: ${python}` });

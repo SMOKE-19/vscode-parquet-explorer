@@ -21,6 +21,8 @@ MAX_PAGE_SIZE = 200
 DEFAULT_COLUMN_LIMIT = 40
 MAX_COLUMN_LIMIT = 100
 MAX_SQL_LENGTH = 100_000
+DEFAULT_MAX_CELL_BYTES = 65_536
+_SIZE_SETTING = re.compile(r"^[1-9][0-9]*(?:\.[0-9]+)?(?:KB|MB|GB|TB)$", re.IGNORECASE)
 _ALLOWED_PREFIX = re.compile(r"^(?:select|with|from|values|describe\s+select)\b", re.IGNORECASE)
 _BLOCKED_EXTERNAL_FUNCTION = re.compile(
     r"\b(?:read_(?:csv|json|parquet|text|blob)|"
@@ -34,7 +36,9 @@ class ParquetExplorerError(ValueError):
 
 
 class ParquetExplorerEngine:
-    def __init__(self, source: str | Path, *, allowed_root: str | Path | None = None) -> None:
+    def __init__(self, source: str | Path, *, allowed_root: str | Path | None = None,
+                 memory_limit: str = "2GB", threads: int = 2, temp_directory: str = "",
+                 max_temp_size: str = "10GB", max_cell_bytes: int = DEFAULT_MAX_CELL_BYTES) -> None:
         requested = Path(source).expanduser().resolve()
         self.allowed_root = (
             Path(allowed_root).expanduser().resolve()
@@ -47,8 +51,20 @@ class ParquetExplorerEngine:
         self._cancelled_query_ids: set[str] = set()
         self._timed_out_query_ids: set[str] = set()
         self._connection = duckdb.connect(database=":memory:")
-        self._connection.execute("SET threads = 2")
-        self._connection.execute("SET memory_limit = '2GB'")
+        memory_limit = _validated_size(memory_limit, "memory_limit")
+        max_temp_size = _validated_size(max_temp_size, "max_temp_directory_size")
+        threads = min(64, max(1, int(threads)))
+        self.max_cell_bytes = min(1_048_576, max(1_024, int(max_cell_bytes)))
+        self._connection.execute("SET threads = ?", [threads])
+        self._connection.execute("SET memory_limit = ?", [memory_limit])
+        self._connection.execute("SET max_temp_directory_size = ?", [max_temp_size])
+        if str(temp_directory).strip():
+            temp_path = Path(temp_directory).expanduser()
+            temp_path = temp_path.resolve() if temp_path.is_absolute() else (self.allowed_root / temp_path).resolve()
+            if temp_path != self.allowed_root and self.allowed_root not in temp_path.parents:
+                raise ParquetExplorerError("임시 폴더는 workspace root 안에 있어야 합니다.")
+            temp_path.mkdir(parents=True, exist_ok=True)
+            self._connection.execute("SET temp_directory = ?", [str(temp_path)])
         self.source = requested
         self.files: list[Path] = []
         self._file_bytes = 0
@@ -101,14 +117,12 @@ class ParquetExplorerEngine:
             self._connection.close()
 
     def metadata(self) -> dict[str, Any]:
-        with self._lock:
-            row_count = int(self._connection.execute("SELECT count(*) FROM data").fetchone()[0])
         return {
             "source_path": str(self.source),
             "source_kind": "dataset" if self.source.is_dir() else "file",
             "file_count": len(self.files),
             "file_bytes": self._file_bytes,
-            "row_count": row_count,
+            "row_count": None,
             "column_count": len(self._columns),
             "columns": list(self._columns),
             "allowed_root": str(self.allowed_root),
@@ -147,6 +161,7 @@ class ParquetExplorerEngine:
         pinned_column_indices: list[int] | None = None,
         request_id: str | None = None,
         timeout_seconds: int = 30,
+        include_total_rows: bool = False,
     ) -> dict[str, Any]:
         page = max(0, int(page))
         page_size = min(MAX_PAGE_SIZE, max(1, int(page_size)))
@@ -155,7 +170,7 @@ class ParquetExplorerEngine:
         column_offset = max(0, int(column_offset))
         column_limit = min(MAX_COLUMN_LIMIT, max(1, int(column_limit)))
         query_id = request_id or uuid.uuid4().hex
-        timeout_seconds = min(120, max(1, int(timeout_seconds)))
+        timeout_seconds = min(86400, max(0, int(timeout_seconds)))
         timer: threading.Timer | None = None
         started = time.perf_counter()
         try:
@@ -163,9 +178,10 @@ class ParquetExplorerEngine:
                 normalized = self._validated_sql(sql)
                 with self._state_lock:
                     self._active_query_id = query_id
-                timer = threading.Timer(timeout_seconds, self._timeout, args=(query_id,))
-                timer.daemon = True
-                timer.start()
+                if timeout_seconds > 0:
+                    timer = threading.Timer(timeout_seconds, self._timeout, args=(query_id,))
+                    timer.daemon = True
+                    timer.start()
                 described = self._connection.execute(
                     f"DESCRIBE SELECT * FROM ({normalized}) AS __smoking_data_query"
                 ).fetchall()
@@ -179,8 +195,8 @@ class ParquetExplorerEngine:
                         **_empty_query_result(sql, page, page_size, offset, column_offset, column_limit),
                         "request_id": query_id,
                     }
-                total_rows = self._row_count_cache.get(normalized)
-                if total_rows is None:
+                total_rows = self._row_count_cache.get(normalized) if include_total_rows else None
+                if include_total_rows and total_rows is None:
                     total_rows = int(
                         self._connection.execute(
                             f"SELECT count(*) FROM ({normalized}) AS __smoking_data_count"
@@ -203,7 +219,7 @@ class ParquetExplorerEngine:
                 projection = ", ".join(_quote_identifier(item["name"]) for item in selected)
                 cursor = self._connection.execute(
                     f"SELECT {projection} FROM ({normalized}) AS __smoking_data_query "
-                    f"LIMIT {page_size} OFFSET {offset}"
+                    f"LIMIT {page_size + (0 if include_total_rows else 1)} OFFSET {offset}"
                 )
                 fetched = cursor.fetchall()
                 self._raise_if_cancelled(query_id)
@@ -224,9 +240,10 @@ class ParquetExplorerEngine:
                     self._active_query_id = None
                 self._cancelled_query_ids.discard(query_id)
                 self._timed_out_query_ids.discard(query_id)
-        has_more = offset + len(fetched) < total_rows
+        has_more = (offset + len(fetched) < total_rows) if total_rows is not None else len(fetched) > page_size
+        fetched = fetched[:page_size]
         rows = [
-            [_json_safe(value) for value in row]
+            [_json_safe(value, self.max_cell_bytes) for value in row]
             for row in fetched
         ]
         return {
@@ -313,7 +330,7 @@ def _quote_identifier(value: str) -> str:
     return '"' + value.replace('"', '""') + '"'
 
 
-def _json_safe(value: Any) -> Any:
+def _json_safe(value: Any, max_bytes: int = DEFAULT_MAX_CELL_BYTES) -> Any:
     if value is None or isinstance(value, (bool, int, float, str)):
         return value
     if isinstance(value, (datetime, date, datetime_time)):
@@ -321,16 +338,55 @@ def _json_safe(value: Any) -> Any:
     if isinstance(value, Decimal):
         return str(value)
     if isinstance(value, bytes):
-        return value.hex()
+        encoded = value.hex()
+        if len(encoded.encode("utf-8")) <= max_bytes:
+            return encoded
+        return {"__pq_truncated__": True, "type": "bytes", "original_bytes": len(encoded),
+                "preview": encoded[:max_bytes]}
     if isinstance(value, (list, tuple)):
-        return [_json_safe(item) for item in value]
+        return _bounded_sequence(value, max_bytes)
     if isinstance(value, dict):
-        return {str(key): _json_safe(item) for key, item in value.items()}
+        return _bounded_mapping(value, max_bytes)
     try:
         json.dumps(value)
     except TypeError:
         return str(value)
     return value
+
+
+def _truncated_complex(kind: str, item_count: int, preview: Any, max_bytes: int) -> dict[str, Any]:
+    text = json.dumps(preview, ensure_ascii=False, separators=(",", ":"))
+    encoded = text.encode("utf-8")[:max_bytes]
+    return {"__pq_truncated__": True, "type": kind, "item_count": item_count,
+            "preview_bytes": len(encoded), "preview": encoded.decode("utf-8", errors="ignore")}
+
+
+def _bounded_sequence(value: list[Any] | tuple[Any, ...], max_bytes: int) -> Any:
+    preview = []
+    for item in value:
+        preview.append(_json_safe(item, max_bytes))
+        if len(json.dumps(preview, ensure_ascii=False, separators=(",", ":")).encode("utf-8")) > max_bytes:
+            preview.pop()
+            return _truncated_complex("list", len(value), preview, max_bytes)
+    return preview
+
+
+def _bounded_mapping(value: dict[Any, Any], max_bytes: int) -> Any:
+    preview = {}
+    for key, item in value.items():
+        key = str(key)
+        preview[key] = _json_safe(item, max_bytes)
+        if len(json.dumps(preview, ensure_ascii=False, separators=(",", ":")).encode("utf-8")) > max_bytes:
+            preview.pop(key)
+            return _truncated_complex("struct", len(value), preview, max_bytes)
+    return preview
+
+
+def _validated_size(value: str, name: str) -> str:
+    text = str(value).strip().upper()
+    if not _SIZE_SETTING.fullmatch(text):
+        raise ParquetExplorerError(f"{name} 설정은 2GB와 같은 양의 크기여야 합니다.")
+    return text
 
 
 def _error_position(message: str) -> dict[str, int] | None:
