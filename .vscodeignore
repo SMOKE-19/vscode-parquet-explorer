@@ -1,5 +1,9 @@
 .git/**
 tests/**
+docs/**
+distribution/**
+deployment/**
+scripts/**
 README.md
 dist/**
 node_modules/**

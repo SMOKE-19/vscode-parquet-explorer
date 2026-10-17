@@ -4,10 +4,12 @@ const fs = require("node:fs");
 const path = require("node:path");
 const crypto = require("node:crypto");
 const vscode = require("vscode");
-const { pythonCommand, startBridge } = require("./bridge");
+const { startBridge } = require("./bridge");
 const { FavoritesStore } = require("./favorites");
+const { RuntimeManager, UV_HELP_URL } = require("./runtime");
 const activeBridges = new Set();
 const VIEW_TYPE = "pqExplorer.parquetExplorer";
+let runtimeManager;
 
 async function saveFavorite(store, payload) {
   let id = payload?.id;
@@ -54,11 +56,11 @@ async function selectSource(uri) {
   return files?.[0];
 }
 
-async function attachExplorer(context, panel, source, favorites) {
+async function attachExplorer(context, panel, source, favorites, runtime) {
   const workspace = vscode.workspace.getWorkspaceFolder(source);
   const root = workspace?.uri.fsPath || path.dirname(source.fsPath);
-  const configured = vscode.workspace.getConfiguration("pqExplorer", source).get("pythonPath", "");
-  const python = pythonCommand(root, configured);
+  let configured = vscode.workspace.getConfiguration("pqExplorer", source).get("pythonPath", "");
+  let python = runtime.selectedPython(root, configured);
   const configuration = vscode.workspace.getConfiguration("pqExplorer", source);
   const settings = {
     queryTimeoutSeconds: configuration.get("queryTimeoutSeconds", 30),
@@ -76,26 +78,98 @@ async function attachExplorer(context, panel, source, favorites) {
   let bridge;
   let disposed = false;
   let webviewLoaded = false;
-  async function launchBridge() {
+  let startupState;
+  let runtimeBusy = false;
+  const unsubscribe = runtime.onProgress((progress) => {
+    if (!disposed && webviewLoaded) panel.webview.postMessage({ type: "setupProgress", ...progress });
+  });
+  function publish(state) {
+    startupState = state;
+    if (!disposed && webviewLoaded) panel.webview.postMessage(state);
+  }
+  function startupFailure(error, setupRequired = false) {
+    publish({
+      type: "startupError", error: `${error.message}\nPython: ${python}`,
+      setupRequired: setupRequired || ["MISSING_DUCKDB", "UNSUPPORTED_PYTHON", "ENOENT", "EACCES"].includes(error.code),
+      setup: runtime.describe(error.python || python),
+    });
+  }
+  async function launchBridge(allowManagedFallback = false) {
     if (bridge) { activeBridges.delete(bridge); bridge.stop(); bridge = undefined; }
-    const next = await startBridge({ python, source: source.fsPath, root, extensionPath: context.extensionPath, settings });
+    let next;
+    try { next = await startBridge({ python, source: source.fsPath, root, extensionPath: context.extensionPath, settings }); }
+    catch (error) {
+      const environmentMissing = ["MISSING_DUCKDB", "UNSUPPORTED_PYTHON", "ENOENT"].includes(error.code);
+      if (!allowManagedFallback || configured || !environmentMissing || python === runtime.python || !fs.existsSync(runtime.python)) throw error;
+      python = runtime.python;
+      next = await startBridge({ python, source: source.fsPath, root, extensionPath: context.extensionPath, settings });
+    }
     if (disposed) { next.stop(); return; }
     bridge = next;
     activeBridges.add(bridge);
   }
   panel.onDidDispose(() => {
     disposed = true;
+    unsubscribe();
     if (bridge) { activeBridges.delete(bridge); bridge.stop(); }
   });
   panel.webview.onDidReceiveMessage(async (message) => {
     if (message?.type === "loaded") {
       webviewLoaded = true;
-      if (bridge && !disposed) panel.webview.postMessage({ type: "ready" });
+      if (startupState && !disposed) panel.webview.postMessage(startupState);
       return;
     }
     if (disposed || typeof message?.id !== "number") return;
+    if (message.operation?.startsWith("setup.")) {
+      try {
+        let result;
+        if (message.operation === "setup.info") result = await runtime.inspect(python);
+        else if (message.operation === "setup.uvHelp") {
+          await vscode.env.openExternal(vscode.Uri.parse(UV_HELP_URL));
+          result = {};
+        } else {
+          if (runtimeBusy) throw new Error("환경 설정을 진행 중입니다. 잠시 기다려 주세요.");
+          runtimeBusy = true;
+          try {
+            let selected;
+            if (message.operation === "setup.install") selected = await runtime.install();
+            else if (message.operation === "setup.choose") {
+              const selectedFiles = await vscode.window.showOpenDialog({
+                title: "DuckDB가 설치된 Python 실행 파일 선택", openLabel: "이 Python 사용",
+                canSelectFiles: true, canSelectFolders: false, canSelectMany: false,
+              });
+              if (!selectedFiles?.length || disposed) result = { cancelled: true };
+              else {
+                const checked = await runtime.validate(selectedFiles[0].fsPath);
+                selected = checked.python;
+              }
+            } else if (message.operation === "setup.retry") {
+              configured = vscode.workspace.getConfiguration("pqExplorer", source).get("pythonPath", "");
+              selected = runtime.selectedPython(root, configured);
+            } else throw new Error("지원하지 않는 환경 설정 작업입니다.");
+            if (selected && !disposed) {
+              python = selected;
+              await launchBridge(message.operation === "setup.retry");
+              if (!disposed) {
+                await runtime.remember(root, configured, python);
+                publish({ type: "ready" });
+                result = { ready: true };
+              }
+            }
+          } finally { runtimeBusy = false; }
+        }
+        if (!disposed) panel.webview.postMessage({ id: message.id, result });
+      } catch (error) {
+        if (!disposed) {
+          if (!bridge) startupFailure(error, true);
+          panel.webview.postMessage({ id: message.id, error: String(error.message || error) });
+        }
+      }
+      return;
+    }
     if (message.operation === "restart") {
       try {
+        if (runtimeBusy) throw new Error("환경 설정을 진행 중입니다. 잠시 기다려 주세요.");
         await launchBridge();
         if (!disposed) panel.webview.postMessage({ id: message.id, result: { restarted: true } });
       } catch (error) {
@@ -156,15 +230,15 @@ async function attachExplorer(context, panel, source, favorites) {
   });
   panel.webview.html = renderHtml(context.extensionPath, panel.webview);
   try {
-    await launchBridge();
+    await launchBridge(true);
     if (disposed) return;
-    if (webviewLoaded) panel.webview.postMessage({ type: "ready" });
+    publish({ type: "ready" });
   } catch (error) {
-    if (!disposed) panel.webview.postMessage({ type: "startupError", error: `${error.message}\nPython: ${python}` });
+    if (!disposed) startupFailure(error);
   }
 }
 
-async function openExplorer(context, sourceUri, favorites) {
+async function openExplorer(context, sourceUri, favorites, runtime) {
   const source = await selectSource(sourceUri);
   if (!source) return;
   const stat = await vscode.workspace.fs.stat(source);
@@ -181,26 +255,29 @@ async function openExplorer(context, sourceUri, favorites) {
     vscode.ViewColumn.Active,
     { enableScripts: true },
   );
-  return attachExplorer(context, panel, source, favorites);
+  return attachExplorer(context, panel, source, favorites, runtime);
 }
 
 function activate(context) {
   const favorites = new FavoritesStore(context.globalStorageUri.fsPath);
+  const runtime = new RuntimeManager({ storagePath: context.globalStorageUri.fsPath, state: context.globalState, remoteName: vscode.env?.remoteName });
+  runtimeManager = runtime;
   context.subscriptions.push(vscode.commands.registerCommand(
     "pqExplorer.openParquetExplorer",
-    (uri) => openExplorer(context, uri, favorites),
+    (uri) => openExplorer(context, uri, favorites, runtime),
   ));
   context.subscriptions.push(vscode.window.registerCustomEditorProvider(VIEW_TYPE, {
     openCustomDocument(uri) {
       return { uri, dispose() {} };
     },
     resolveCustomEditor(document, panel) {
-      return attachExplorer(context, panel, document.uri, favorites);
+      return attachExplorer(context, panel, document.uri, favorites, runtime);
     },
   }, { supportsMultipleEditorsPerDocument: true }));
 }
 
 function deactivate() {
+  runtimeManager?.dispose();
   for (const bridge of activeBridges) bridge.stop();
   activeBridges.clear();
 }

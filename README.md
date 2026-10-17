@@ -4,7 +4,7 @@ VS Code 안에서 Parquet 파일 또는 dataset 폴더를 DuckDB로 조회합니
 
 ## 사용
 
-1. 조회할 workspace의 Python 3.10+ 환경에 `duckdb>=1.4,<2`를 설치합니다.
+1. Python 3.10+와 `duckdb>=1.4,<2`가 설치된 환경을 사용하거나, 파일을 처음 열 때 **환경 설정**에서 전용 환경을 설치합니다.
 2. VS Code 확장 개발 호스트에서 이 폴더를 확장으로 실행하거나 VSIX로 설치합니다.
 3. 탐색기의 `.parquet` 파일을 열면 해당 **파일 하나**가 PQ Explorer의 기본 편집기로 표시됩니다. 우클릭의 **PQ Explorer: Open Parquet** 명령으로도 열 수 있습니다. 상단 경로에 폴더를 입력하고 **소스 열기**를 누르면 그 폴더 아래의 Parquet을 데이터셋으로 조회합니다.
 4. 기본 50행·20칼럼씩 조회하며, 표는 최대 약 10행 높이로 표시하고 내부에서 스크롤합니다. SQL을 바꾼 뒤 `Ctrl+Enter`로 재실행할 수 있습니다. 리스트 값에는 원소 수가 표시됩니다. 빠른 첫 페이지 표시를 위해 정확한 전체 행 수는 기본적으로 계산하지 않습니다.
@@ -13,7 +13,11 @@ SQL 제목 오른쪽의 **SQL 저장**으로 별칭과 설명을 붙여 즐겨�
 
 즐겨찾기는 확장의 **전역 저장소** 아래 `pq-explorer-sql-favorites/`에 `index.json`과 개별 `sql/*.sql` 파일로 저장됩니다. 기존 `sql-favorites/` 폴더가 있으면 처음 사용할 때 새 이름으로 옮깁니다. 즐겨찾기 선택 창 상단에 실제 **백업 폴더 경로**가 항상 표시되고, 복사 버튼으로 경로를 복사할 수 있습니다. 백업할 때는 `pq-explorer-sql-favorites/` 폴더 전체를 복사하세요. 로컬 VS Code에서는 로컬 컴퓨터에 저장되고, Remote SSH에서는 확장이 실행되는 SSH 서버에 저장됩니다. 경로는 화면에서 변경하지 않습니다.
 
-확장은 workspace 내부 `smoking-data-visualize/.venv`, 그다음 workspace `.venv`를 탐색합니다. 해당 환경에 DuckDB가 없다면 `pqExplorer.pythonPath`를 DuckDB가 설치된 Python 실행 파일로 설정하세요. 경로는 절대경로 또는 workspace 상대경로를 사용할 수 있습니다.
+확장은 `pqExplorer.pythonPath`, workspace 내부 `smoking-data-visualize/.venv`, workspace `.venv`, PATH의 `python` 순으로 선택합니다. 선택한 Python에 DuckDB가 있으면 바로 조회합니다. 경로 설정은 절대경로 또는 workspace 상대경로를 사용할 수 있습니다.
+
+Python이나 DuckDB가 없으면 **환경 설정** 버튼을 표시합니다. **기존 Python 선택**으로 이미 설치된 실행 파일을 지정하거나 **설치 시작**으로 확장 전용 환경을 준비할 수 있습니다. 설치 화면에는 실제 실행 환경과 설치 위치, 진행 상태와 로그가 표시됩니다. 전용 환경은 확장의 전역 저장소 아래 `python-runtime/.venv`에 생성하며 프로젝트의 가상환경과 분리됩니다. uv로 Python 3.13을 준비하고 DuckDB를 설치·검증한 뒤 원래 Parquet을 자동 조회합니다. uv가 없으면 **uv 설치 안내 열기**와 **다시 확인**을 사용하세요. 명령어를 직접 실행하려면 **직접 설치하기**를 펼치면 됩니다.
+
+설치하거나 선택한 Python은 workspace별로 기억하며, 다른 workspace에서도 준비된 전용 환경을 재사용할 수 있습니다. `pqExplorer.pythonPath` 설정을 변경하면 변경한 설정을 우선 적용합니다. 파일을 여는 것만으로 설치하지 않으며, 여러 탭에서 설치를 요청해도 설치 작업은 하나만 실행합니다. 실패하면 로그를 확인하고 다시 시도할 수 있습니다. Windows에서는 Windows에, WSL·Remote SSH에서는 확장이 실행되는 해당 환경에 설치됩니다.
 
 ```json
 {
@@ -31,7 +35,7 @@ Windows에서는 해당 경로를 `.venv\\Scripts\\python.exe`처럼 지정할 �
 - 각 Explorer 탭은 독립 Python 작업자를 실행하며, 탭을 닫으면 작업자를 종료합니다. 파일 경로와 SQL 결과는 로컬 프로세스 간에만 전달됩니다.
 - SQL은 포함된 visualize Parquet 엔진의 읽기 전용 검증을 거칩니다. 기본 경로는 요청한 페이지보다 한 행만 더 읽어 다음 페이지 여부를 판단하며 전체 `COUNT(*)`는 실행하지 않습니다.
 - `DESCRIBE SELECT * FROM data`로 조회 결과의 칼럼 이름과 타입을 표에서 확인할 수 있습니다.
-- 조회 화면은 기본 표·SQL 입력·검사·페이지 이동을 제공합니다. Python과 DuckDB는 별도 설치가 필요합니다.
+- 조회 화면은 기본 표·SQL 입력·검사·페이지 이동을 제공합니다. Python과 DuckDB는 기존 설치를 사용하거나 환경 설정 화면에서 준비합니다.
 - 현재 페이지에서 고유값 수가 표시된 행 수보다 작은 칼럼은 셀 배경을 색칠합니다. 리스트 값도 비교하며, 값별 색은 같은 SQL의 페이지 이동 중 유지합니다. 처음 등장한 값에는 보색에 가까운 색을 우선 배정하고, 값이 많아지면 연속 색상 차이가 큰 팔레트를 사용합니다. 이 판별은 전체 데이터가 아닌 표시된 페이지 기준입니다.
 - 결과 표의 행 수는 25·50·100·200, 칼럼 수는 5·10·20·40·100 중에서 선택할 수 있습니다. 기본값은 각각 50행과 20칼럼이며, 칼럼 좌우 이동 폭은 선택한 칼럼 수를 따릅니다.
 - SQL 편집기는 로컬 번들의 CodeMirror로 SQL 구문을 강조하고, DuckDB 검사 오류를 밑줄로 표시합니다. VS Code의 SQL 언어 서버 전체 기능을 복제하지는 않습니다.
@@ -50,6 +54,17 @@ npm run build
 
 다른 확장이 `.parquet`의 기본 편집기로 선택되었다면 파일 탭에서 **Reopen Editor With...** → **PQ Explorer**를 선택하세요.
 
-설치 파일이 필요하면 `npm install` 후 `npm run package`를 실행합니다. 생성되는 `dist/pq-explorer-0.1.7.vsix`를 VS Code의 **Extensions: Install from VSIX**에서 설치할 수 있습니다. 이전 화면으로 돌아가려면 `dist/pq-explorer-0.1.6.vsix`를 다시 설치하세요. 이전 버전의 VSIX도 `dist/`에 보관합니다.
+설치 파일이 필요하면 `npm install` 후 `npm run package`를 실행합니다. 생성되는 `dist/pq-explorer-0.1.8.vsix`를 VS Code의 **Extensions: Install from VSIX**에서 설치할 수 있습니다. 이전 화면으로 돌아가려면 `dist/pq-explorer-0.1.7.vsix`를 다시 설치하세요. 이전 버전의 VSIX도 `dist/`에 보관합니다.
 
 GitHub Release에 첨부된 VSIX도 다운로드한 뒤 VS Code에서 `Ctrl+Shift+P` → **Extensions: Install from VSIX...**로 설치할 수 있습니다. VSIX 설치는 자동 업데이트되지 않으므로 새 버전은 다시 설치해야 합니다.
+
+## Tailnet 다운로드
+
+Tailnet에 연결한 뒤 [VSIX 다운로드 페이지](http://smoke-sv.tailf3a251.ts.net:8787/)에서 최신 파일을 받습니다. 페이지에는 버전, 설치 순서와 SHA-256이 표시됩니다. Windows VS Code에서의 직접 동작 검증 여부도 페이지에서 확인할 수 있습니다.
+
+```bash
+npm run package
+python scripts/prepare_downloads.py
+```
+
+다운로드 파일과 페이지는 `dist/downloads/`에 생성됩니다. 같은 버전의 파일이 이미 배포 폴더에 있는데 체크섬이 다르면 덮어쓰지 않습니다. 새 소스를 배포할 때는 버전을 올리고 다시 패키징하세요. [다운로드 서비스 정의](deployment/pq-explorer-downloads.service)는 이 서버의 Tailnet IP `100.109.190.96:8787`에만 바인딩하여 배포 폴더를 HTTP로 제공합니다. 기존 Tailscale Serve 설정과 분리되어 있습니다.

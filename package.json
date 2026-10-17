@@ -2,7 +2,7 @@
   "name": "pq-explorer",
   "displayName": "PQ Explorer",
   "description": "Read-only DuckDB Parquet Explorer for VS Code.",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "publisher": "smoke-19",
   "repository": {
     "type": "git",
@@ -76,44 +76,59 @@
         "pqExplorer.pythonPath": {
           "type": "string",
           "default": "",
-          "description": "duckdb가 설치된 Python 실행 파일. 비워두면 workspace 내 가상환경을 탐색합니다."
+          "description": "duckdb가 설치된 Python 실행 파일. 비워두면 workspace 가상환경과 PATH의 Python을 사용하며, 준비된 PQ Explorer 전용 환경도 재사용합니다."
         },
         "pqExplorer.queryTimeoutSeconds": {
-          "type": "number", "default": 30, "minimum": 0, "maximum": 86400,
+          "type": "number",
+          "default": 30,
+          "minimum": 0,
+          "maximum": 86400,
           "description": "SQL 실행 제한 시간(초). 0이면 시간 제한을 사용하지 않습니다."
         },
         "pqExplorer.exactResultCount": {
-          "type": "boolean", "default": false,
+          "type": "boolean",
+          "default": false,
           "description": "각 SQL 결과의 정확한 전체 행 수를 계산합니다. 대용량 데이터에서는 첫 페이지 표시가 늦어질 수 있습니다."
         },
         "pqExplorer.duckdbMemoryLimit": {
-          "type": "string", "default": "2GB", "pattern": "^[1-9][0-9]*(\\.[0-9]+)?(KB|MB|GB|TB)$",
+          "type": "string",
+          "default": "2GB",
+          "pattern": "^[1-9][0-9]*(\\.[0-9]+)?(KB|MB|GB|TB)$",
           "description": "DuckDB 메모리 상한(예: 2GB)."
         },
         "pqExplorer.duckdbThreads": {
-          "type": "integer", "default": 2, "minimum": 1, "maximum": 64,
+          "type": "integer",
+          "default": 2,
+          "minimum": 1,
+          "maximum": 64,
           "description": "DuckDB가 사용할 최대 worker thread 수."
         },
         "pqExplorer.duckdbTempDirectory": {
-          "type": "string", "default": "",
+          "type": "string",
+          "default": "",
           "description": "메모리 초과 데이터를 저장할 임시 폴더. 상대 경로는 workspace 기준이며, 비워두면 DuckDB 기본값을 사용합니다."
         },
         "pqExplorer.duckdbMaxTempSize": {
-          "type": "string", "default": "10GB", "pattern": "^[1-9][0-9]*(\\.[0-9]+)?(KB|MB|GB|TB)$",
+          "type": "string",
+          "default": "10GB",
+          "pattern": "^[1-9][0-9]*(\\.[0-9]+)?(KB|MB|GB|TB)$",
           "description": "DuckDB 임시 디스크 사용 상한(예: 10GB)."
         },
         "pqExplorer.maxCellBytes": {
-          "type": "integer", "default": 65536, "minimum": 1024, "maximum": 1048576,
+          "type": "integer",
+          "default": 65536,
+          "minimum": 1024,
+          "maximum": 1048576,
           "description": "LIST, STRUCT, bytes 셀 하나의 전송 상한(byte). 초과 내용은 잘림 메타데이터와 함께 전송됩니다."
         }
       }
     }
   },
   "scripts": {
-    "check": "node --check extension.js && node --check favorites.js && node --check bridge.js && node --check media/explorer.js && node --check media/sql-editor.source.mjs",
+    "check": "node --check extension.js && node --check favorites.js && node --check bridge.js && node --check runtime.js && node --check media/explorer.js && node --check media/sql-editor.source.mjs",
     "build": "esbuild media/sql-editor.source.mjs --bundle --format=iife --platform=browser --target=es2022 --minify --outfile=media/sql-editor.js",
     "vscode:prepublish": "npm run build",
     "test": "npm run build && node --test tests/*.test.js && python -m unittest discover -s tests",
-    "package": "vsce package --out dist/pq-explorer-0.1.7.vsix"
+    "package": "vsce package --out dist/pq-explorer-0.1.8.vsix"
   }
 }

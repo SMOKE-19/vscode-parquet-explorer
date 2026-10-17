@@ -1,0 +1,33 @@
+flowchart TD
+    A[Parquet 열기] --> B[Python·DuckDB 확인]
+    B -->|사용 가능| C[조회 화면 표시]
+    B -->|설정 필요| D["환경 설정 필요 화면<br/>원인과 현재 Python 표시"]
+
+    D --> E[환경 설정 버튼]
+    D --> M[직접 설치하기 · 명령어 보기]
+
+    E --> F["설치 화면<br/>실행 환경: Windows / WSL / SSH<br/>설치 위치와 필요한 구성 표시"]
+    F --> G{사용자 선택}
+
+    G -->|기존 Python 선택| H[선택한 Python·DuckDB 확인]
+    H -->|정상| L[작업자 시작 · Parquet 자동 조회]
+    H -->|사용 불가| F
+
+    G -->|설치 시작| I{uv 사용 가능?}
+    I -->|아니오| J[uv 설치 안내 · 다시 확인]
+    J --> I
+    I -->|예| K["진행 상태 표시<br/>Python 3.13 준비<br/>가상환경 생성<br/>DuckDB 설치"]
+
+    K -->|완료| L
+    K -->|실패| N[실패 원인 · 다시 시도 · 로그 보기]
+    N --> F
+    L --> C
+
+    classDef screen fill:#eaf2ff,stroke:#4876ba,color:#17375e,stroke-width:1.5px;
+    classDef action fill:#fff3dc,stroke:#c58b2c,color:#68430d,stroke-width:1.5px;
+    classDef success fill:#e6f6ed,stroke:#3e9165,color:#195238,stroke-width:1.5px;
+    classDef recovery fill:#fff0ef,stroke:#bd6964,color:#713b36,stroke-width:1.5px;
+    class D,F screen;
+    class E,G,I,K action;
+    class C,L success;
+    class J,N recovery;

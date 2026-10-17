@@ -6,6 +6,9 @@ const pending = new Map();
 let nextId = 1;
 let querySequence = 0;
 let activeRequestId;
+let runtimeReady = false;
+let setupBusy = false;
+let setupInfo;
 let rowOffset = 0;
 let columnOffset = 0;
 let activeRowLimit = 50;
@@ -19,7 +22,7 @@ const columnColors = new Map();
 const CATEGORY_HUES = [210, 30, 150, 330, 90, 270, 0, 180];
 const sqlEditor = window.PQSqlEditor.create($("sql-editor"), {
   onRun: () => runQuery(),
-  onLint: (sql) => request("lint", { sql }),
+  onLint: (sql) => runtimeReady ? request("lint", { sql }) : Promise.resolve({ ok: true }),
 });
 
 function request(operation, payload = {}) {
@@ -33,6 +36,48 @@ function request(operation, payload = {}) {
 function status(message, error = false) {
   $("status").textContent = message;
   $("status").classList.toggle("error", error);
+}
+
+function setupControls(busy) {
+  setupBusy = busy;
+  $("runtime-setup").setAttribute("aria-busy", String(busy));
+  for (const id of ["setup-choose", "setup-check", "setup-back", "runtime-retry"]) $(id).disabled = busy;
+  $("setup-install").disabled = busy || !!setupInfo?.installing || !setupInfo?.uvAvailable;
+  $("setup-progress").hidden = !busy && !setupInfo?.installing;
+}
+
+function renderSetup(info) {
+  setupInfo = { ...setupInfo, ...info };
+  $("runtime-environment").textContent = $("setup-environment").textContent = setupInfo.environment;
+  $("runtime-python").textContent = $("setup-python").textContent = setupInfo.currentPython;
+  $("setup-directory").textContent = setupInfo.venv;
+  $("runtime-directory").textContent = $("setup-manual-directory").textContent = setupInfo.directory;
+  $("runtime-commands").textContent = $("setup-commands").textContent = setupInfo.commands;
+  $("setup-uv").hidden = setupInfo.uvAvailable !== false;
+  $("setup-uv-reason").textContent = setupInfo.uvError || "";
+  if (setupInfo.log !== undefined) $("setup-log").textContent = setupInfo.log;
+  setupControls(setupBusy);
+}
+
+async function setupAction(operation) {
+  if (setupBusy) return;
+  setupControls(true);
+  $("setup-error").textContent = "";
+  $("setup-status").textContent = operation === "setup.install" ? "환경 준비 중…" : "환경 확인 중…";
+  try {
+    const response = await request(operation);
+    if (operation === "setup.info") {
+      renderSetup(response);
+      $("setup-status").textContent = response.installing ? "다른 탭에서 환경을 설치 중입니다…" : response.uvAvailable ? "설치를 시작하거나 기존 Python을 선택하세요." : "uv 설치 후 다시 확인하세요. 기존 Python도 선택할 수 있습니다.";
+    } else if (response?.cancelled) $("setup-status").textContent = "Python 선택을 취소했습니다.";
+  } catch (error) {
+    $("setup-error").textContent = String(error.message || error);
+    $("setup-status").textContent = "설정을 완료하지 못했습니다. 다시 시도하거나 로그를 확인하세요.";
+    if (operation === "setup.retry" && $("runtime-setup").hidden) {
+      $("runtime-required").hidden = true;
+      $("runtime-setup").hidden = false;
+    }
+  } finally { setupControls(false); }
 }
 
 function formatCell(value) {
@@ -292,6 +337,7 @@ function render(resultValue) {
 }
 
 async function query(nextRowOffset = 0, nextColumnOffset = 0, limits = {}) {
+  if (!runtimeReady) return;
   const sequence = ++querySequence;
   const sql = sqlEditor.getValue();
   if (colorQuerySql !== undefined && colorQuerySql !== sql) {
@@ -371,12 +417,45 @@ window.addEventListener("message", async (event) => {
     return;
   }
   if (message.type === "startupError") {
+    runtimeReady = false;
     $("meta").textContent = "DuckDB 작업자 시작 실패";
-    status(message.error, true);
+    if (message.setupRequired) {
+      renderSetup(message.setup);
+      $("runtime-reason").textContent = String(message.error).split("\n")[0];
+      $("runtime-required").hidden = !$("runtime-setup").hidden;
+      $("explorer-content").hidden = true;
+    } else if (!$("runtime-setup").hidden) $("setup-error").textContent = message.error;
+    else status(message.error, true);
+  } else if (message.type === "setupProgress") {
+    renderSetup({ installing: message.installing, log: message.log });
+    $("setup-status").textContent = message.message;
   } else if (message.type === "ready") {
+    runtimeReady = true;
+    $("runtime-required").hidden = $("runtime-setup").hidden = true;
+    $("explorer-content").hidden = false;
     try { await refreshMetadata(); await query(); }
     catch (error) { status(String(error.message || error), true); }
   }
+});
+
+$("setup-open").addEventListener("click", () => {
+  $("runtime-required").hidden = true;
+  $("runtime-setup").hidden = false;
+  $("setup-title").focus();
+  setupAction("setup.info");
+});
+$("setup-install").addEventListener("click", () => setupAction("setup.install"));
+$("setup-choose").addEventListener("click", () => setupAction("setup.choose"));
+$("setup-check").addEventListener("click", () => setupAction("setup.info"));
+$("runtime-retry").addEventListener("click", () => setupAction("setup.retry"));
+$("setup-uv-help").addEventListener("click", async () => {
+  try { await request("setup.uvHelp"); }
+  catch (error) { $("setup-error").textContent = String(error.message || error); }
+});
+$("setup-back").addEventListener("click", () => {
+  $("runtime-setup").hidden = true;
+  $("runtime-required").hidden = false;
+  $("setup-open").focus();
 });
 
 $("run").addEventListener("click", runQuery);

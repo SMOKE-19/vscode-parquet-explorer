@@ -7,6 +7,27 @@ header { padding: 18px 22px 8px; border-bottom: 1px solid var(--vscode-panel-bor
 h1 { margin: 0; font-size: 18px; }
 header { padding-bottom: 14px; }
 main { padding: 16px 22px; }
+[hidden] { display: none !important; }
+.setup-card { max-width: 780px; margin: 24px auto; padding: 26px; border: 1px solid var(--vscode-panel-border); border-radius: 8px; }
+.setup-card h2 { font-size: 20px; margin: 8px 0 12px; }
+.setup-card p { line-height: 1.65; }
+.setup-eyebrow, .setup-description { color: var(--vscode-descriptionForeground); }
+.setup-eyebrow { font-size: 12px; }
+.setup-facts { display: grid; grid-template-columns: 90px minmax(0, 1fr); gap: 10px 16px; padding: 16px; background: var(--vscode-textCodeBlock-background); border-radius: 5px; }
+.setup-facts dt { color: var(--vscode-descriptionForeground); }
+.setup-facts dd { margin: 0; overflow-wrap: anywhere; }
+.setup-card code, .setup-card pre { font-family: var(--vscode-editor-font-family, monospace); }
+.setup-steps { padding-left: 24px; line-height: 2; }
+.setup-actions { display: flex; gap: 8px; flex-wrap: wrap; margin: 18px 0; }
+.setup-uv { padding: 14px; border-left: 3px solid var(--vscode-editorWarning-foreground, #c58b2c); background: var(--vscode-textBlockQuote-background); }
+.setup-uv p { margin: 8px 0; }
+.setup-card progress { width: 100%; accent-color: var(--vscode-progressBar-background); }
+#setup-error { color: var(--vscode-errorForeground); white-space: pre-wrap; overflow-wrap: anywhere; }
+.setup-log, .setup-manual { margin-top: 18px; }
+.setup-card summary { cursor: pointer; color: var(--vscode-descriptionForeground); }
+.setup-card pre { padding: 12px; white-space: pre-wrap; overflow-wrap: anywhere; background: var(--vscode-textCodeBlock-background); line-height: 1.6; }
+.setup-log pre { max-height: 240px; overflow: auto; }
+.setup-manual > code { display: block; overflow-wrap: anywhere; }
 .source-row, .toolbar { display: flex; align-items: center; gap: 8px; }
 .source-row input { flex: 1; min-width: 0; }
 input, textarea, select { color: var(--vscode-input-foreground); background: var(--vscode-input-background); border: 1px solid var(--vscode-input-border, transparent); font: inherit; padding: 6px 8px; }
@@ -29,7 +50,7 @@ button small { opacity: .7; margin-left: 6px; }
 .sql-actions { margin-left: auto; }
 .sql-actions button { padding: 4px 8px; }
 #status { color: var(--vscode-descriptionForeground); }
-#status.error { color: var(--vscode-errorForeground); }
+#status.error { color: var(--vscode-errorForeground); white-space: pre-wrap; overflow-wrap: anywhere; max-width: 100%; }
 .table-wrap { overflow: auto; max-height: min(510px, calc(100vh - 190px)); min-height: 180px; border: 1px solid var(--vscode-panel-border); }
 .empty { padding: 25px; color: var(--vscode-descriptionForeground); }
 table { border-collapse: collapse; min-width: 100%; white-space: nowrap; font-family: var(--vscode-editor-font-family); }

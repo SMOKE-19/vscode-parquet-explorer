@@ -12,6 +12,30 @@
     <h1>PQ Explorer</h1>
   </header>
   <main>
+    <section id="runtime-required" class="setup-card" hidden aria-labelledby="runtime-title">
+      <span class="setup-eyebrow">처음 사용하기</span>
+      <h2 id="runtime-title">Python 환경 설정이 필요합니다</h2>
+      <p id="runtime-reason"></p>
+      <dl class="setup-facts"><dt>실행 환경</dt><dd id="runtime-environment"></dd><dt>현재 Python</dt><dd><code id="runtime-python"></code></dd></dl>
+      <div class="setup-actions"><button id="setup-open" class="primary">환경 설정</button><button id="runtime-retry">다시 확인</button></div>
+      <details class="setup-manual"><summary>직접 설치하기 · 명령어 보기</summary><p>아래 폴더가 없으면 만든 뒤 터미널에서 열어 실행하세요. uv가 필요합니다.</p><code id="runtime-directory"></code><pre id="runtime-commands"></pre><p>다른 가상환경은 먼저 비활성화하고, 기존 .venv가 있으면 생성 명령을 건너뛰세요. 완료 후 ‘환경 설정’에서 설치된 Python을 선택할 수 있습니다.</p></details>
+    </section>
+    <section id="runtime-setup" class="setup-card" hidden aria-labelledby="setup-title">
+      <span class="setup-eyebrow">PQ Explorer 환경 설정</span>
+      <h2 id="setup-title" tabindex="-1">조회에 사용할 Python을 준비합니다</h2>
+      <p>기존 Python을 선택하거나, PQ Explorer 전용 환경을 설치할 수 있습니다.</p>
+      <dl class="setup-facts"><dt>실행 환경</dt><dd id="setup-environment"></dd><dt>현재 Python</dt><dd><code id="setup-python"></code></dd><dt>설치 위치</dt><dd><code id="setup-directory"></code></dd></dl>
+      <p class="setup-description">전용 환경에는 Python 3.13과 DuckDB를 설치합니다. 처음에는 다운로드가 필요할 수 있으며, 준비한 환경은 다음 실행에도 재사용합니다.</p>
+      <ol class="setup-steps"><li>Python 3.13 · 가상환경 준비</li><li>DuckDB 설치</li><li>환경 검증 · Parquet 자동 조회</li></ol>
+      <div id="setup-uv" class="setup-uv" hidden><strong>이 실행 환경에 uv가 필요합니다</strong><p id="setup-uv-reason"></p><button id="setup-uv-help">uv 설치 안내 열기</button></div>
+      <div class="setup-actions"><button id="setup-install" class="primary" disabled>설치 시작</button><button id="setup-choose">기존 Python 선택</button><button id="setup-check">다시 확인</button><button id="setup-back">뒤로</button></div>
+      <progress id="setup-progress" hidden aria-label="환경 설정 진행 중"></progress>
+      <p id="setup-status" role="status" aria-live="polite"></p>
+      <p id="setup-error" role="alert"></p>
+      <details class="setup-log"><summary>설치 로그 보기</summary><pre id="setup-log"></pre></details>
+      <details class="setup-manual"><summary>직접 설치하기 · 명령어 보기</summary><p>아래 폴더가 없으면 만든 뒤 터미널에서 열어 실행하세요. 다른 가상환경은 먼저 비활성화하세요. 기존 .venv가 있으면 생성 명령을 건너뛰세요.</p><code id="setup-manual-directory"></code><pre id="setup-commands"></pre><p>완료 후 ‘기존 Python 선택’에서 .venv의 실행 파일을 선택하면 환경을 검증하고 조회를 시작합니다.</p></details>
+    </section>
+    <div id="explorer-content">
     <div class="source-row">
       <input id="source" aria-label="Parquet 경로" placeholder="Parquet 파일 또는 dataset 폴더 경로">
       <button id="open-source">소스 열기</button>
@@ -49,6 +73,7 @@
       </div>
     </div>
     <div id="table-wrap" class="table-wrap"><div class="empty">결과를 기다리는 중입니다…</div></div>
+    </div>
   </main>
   <section id="favorites-dialog" class="favorites-dialog" role="dialog" aria-modal="true" aria-labelledby="favorites-title" hidden>
     <div class="favorites-card">

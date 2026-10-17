@@ -25,6 +25,7 @@ function startBridge({ python, source, root, extensionPath, settings = {} }) {
     const worker = path.join(extensionPath, "python", "worker.py");
     const child = spawn(python, ["-u", worker, source, root, JSON.stringify(settings)], {
       cwd: root, windowsHide: true, stdio: ["pipe", "pipe", "pipe"],
+      env: { ...process.env, PYTHONIOENCODING: "utf-8" },
     });
     const pending = new Map();
     let nextId = 1;
@@ -52,7 +53,10 @@ function startBridge({ python, source, root, extensionPath, settings = {} }) {
       let message;
       try { message = JSON.parse(line); }
       catch { fail(new Error("DuckDB 작업자의 응답이 올바르지 않습니다.")); return; }
-      if (message.type === "startupError") { fail(new Error(message.error)); return; }
+      if (message.type === "startupError") {
+        fail(Object.assign(new Error(message.error), { code: message.code, python: message.python }));
+        return;
+      }
       if (message.type === "ready") {
         clearTimeout(timeout);
         ready = true;
