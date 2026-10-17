@@ -4,8 +4,8 @@ const os = require("node:os");
 const yauzl = require("yauzl");
 
 const roots = new Set(["extension.js", "bridge.js", "favorites.js", "package.json", "readme.md", "changelog.md", "license.txt", "privacy.md", "security.md", "third_party_notices.md"]);
-const owned = /^(?:engine\/(?:parquet|sql|values|worker)\.js|media\/(?:explorer\.(?:js|html|css)|sql-editor\.js)|assets\/(?:icon|explorer)\.png)$/;
-const vendor = /^node_modules\/(?:@duckdb\/(?:node-api|node-bindings|node-bindings-(?:linux|win32|darwin)-(?:x64|arm64)(?:-musl)?)|detect-libc)\//;
+const owned = /^(?:engine\/(?:parquet|sql|values|worker|formats|sbdf|xlsx-reader)\.js|media\/(?:explorer\.(?:js|html|css)|sql-editor\.js)|assets\/(?:icon|explorer)\.png)$/;
+const vendor = /^node_modules\/(?:@duckdb\/(?:node-api|node-bindings|node-bindings-(?:linux|win32|darwin)-(?:x64|arm64)(?:-musl)?)|detect-libc|yauzl|pend)\//;
 const patterns = [
   ["private key", /-----BEGIN (?:[A-Z]+ )?PRIVATE KEY-----/],
   ["GitHub credential", /(?:gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{30,})/],

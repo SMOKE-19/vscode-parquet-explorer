@@ -19,7 +19,8 @@
     </section>
     <div id="explorer-content">
     <div class="source-row">
-      <input id="source" aria-label="Parquet 경로" aria-describedby="source-error" placeholder="Parquet 파일 또는 dataset 폴더 경로 · 실행 시 적용">
+      <input id="source" aria-label="데이터 파일 경로" aria-describedby="source-error" placeholder="Parquet·CSV·TSV·SBDF·XLSX 파일 또는 Parquet dataset 폴더 · 실행 시 적용">
+      <select id="sheet" aria-label="Excel 시트 · 실행 시 적용" hidden></select>
     </div>
     <p id="source-error" class="source-error" role="alert" hidden></p>
     <div id="meta" class="meta">DuckDB 작업자를 시작하는 중입니다…</div>

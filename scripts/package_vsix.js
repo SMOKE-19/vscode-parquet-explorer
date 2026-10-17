@@ -56,6 +56,7 @@ async function main() {
     await fs.rm(path.join(stage, "package-lock.json"));
     await fs.rm(path.join(stage, "node_modules", ".package-lock.json"), { force: true });
     await fs.rm(path.join(stage, "media", "sql-editor.source.mjs"));
+    await fs.rm(path.join(stage, "engine", "xlsx-reader.source.mjs"));
     await fs.writeFile(path.join(stage, ".vscodeignore"), "**/*.d.ts\n**/*.js.map\n");
     await createVSIX({ cwd: stage, packagePath: artifact, target, dependencies: true, useYarn: false });
     await registerScreenshot(artifact);

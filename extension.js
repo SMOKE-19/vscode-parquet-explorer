@@ -51,14 +51,14 @@ async function selectSource(uri) {
   if (uri?.scheme === "file") return uri;
   if (vscode.window.activeTextEditor?.document.uri.scheme === "file") {
     const active = vscode.window.activeTextEditor.document.uri;
-    if (active.fsPath.toLowerCase().endsWith(".parquet")) return active;
+    if (/\.(parquet|csv|tsv|sbdf|xlsx)$/i.test(active.fsPath)) return active;
   }
   const files = await vscode.window.showOpenDialog({
     canSelectFiles: true,
     canSelectFolders: true,
     canSelectMany: false,
-    filters: { Parquet: ["parquet"] },
-    openLabel: "Parquet 열기",
+    filters: { "데이터 파일": ["parquet", "csv", "tsv", "sbdf", "xlsx"] },
+    openLabel: "데이터 열기",
   });
   return files?.[0];
 }
@@ -67,6 +67,7 @@ async function attachExplorer(context, panel, source, favorites, initialSql) {
   const workspace = vscode.workspace.getWorkspaceFolder(source);
   const root = workspace?.uri.fsPath || path.dirname(source.fsPath);
   let currentSource = source.fsPath;
+  let currentSheet;
   const configuration = vscode.workspace.getConfiguration("pqExplorer", source);
   const settings = {
     queryTimeoutSeconds: configuration.get("queryTimeoutSeconds", 30),
@@ -100,7 +101,7 @@ async function attachExplorer(context, panel, source, favorites, initialSql) {
     try {
       if (bridge) { const previous = bridge; bridge = undefined; await stopBridge(previous); }
       if (disposed) return;
-      const next = await startBridge({ source: currentSource, root, extensionPath: context.extensionPath, settings,
+      const next = await startBridge({ source: currentSource, root, extensionPath: context.extensionPath, settings: { ...settings, sheet: currentSheet },
         onFailure(error) {
           if (bridge) void stopBridge(bridge);
           bridge = undefined;
@@ -175,7 +176,7 @@ async function attachExplorer(context, panel, source, favorites, initialSql) {
       } : message.payload;
       if (message.operation === "query") delete payload.favorite_id;
       const result = await bridge.request(message.operation, payload);
-      if (message.operation === "source") currentSource = result.source_path;
+      if (message.operation === "source") { currentSource = result.source_path; currentSheet = result.selected_sheet ?? undefined; }
       const firstRows = message.payload?.row_offset === 0
         || (message.payload?.row_offset === undefined && (message.payload?.page ?? 0) === 0);
       if (message.operation === "query" && firstRows && message.payload?.column_offset === 0) {
@@ -205,8 +206,8 @@ async function openExplorer(context, sourceUri, favorites, options = {}) {
   const source = await selectSource(sourceUri);
   if (!source) return;
   const stat = await vscode.workspace.fs.stat(source);
-  if (!(stat.type & vscode.FileType.Directory) && !source.fsPath.toLowerCase().endsWith(".parquet")) {
-    vscode.window.showErrorMessage("Parquet 파일 또는 dataset 폴더를 선택하세요.");
+  if (!(stat.type & vscode.FileType.Directory) && !/\.(parquet|csv|tsv|sbdf|xlsx)$/i.test(source.fsPath)) {
+    vscode.window.showErrorMessage("Parquet·CSV·TSV·SBDF·XLSX 파일 또는 Parquet dataset 폴더를 선택하세요.");
     return;
   }
   if (!(stat.type & vscode.FileType.Directory) && !initialSql) {

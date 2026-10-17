@@ -2,7 +2,7 @@
 
 ## 개발 환경
 
-빌드 도구 `@vscode/vsce` 4의 요구 조건에 맞는 Node.js 22 이상과 npm이 필요합니다. 이것은 **개발용 조건**이며 확장 사용자는 Node.js·npm·Python을 설치하지 않습니다. 실행 시 VS Code가 제공하는 Node.js를 사용합니다.
+빌드 도구 `@vscode/vsce` 4의 요구 조건에 맞는 Node.js 22 이상과 npm이 필요합니다. 이것은 **개발용 조건**이며 확장 사용자는 Node.js·npm·Python을 설치하지 않습니다. 실행 시 VS Code가 제공하는 Node.js를 사용합니다. XLSX 의존성은 Node 18 대상 CJS 번들로 변환해 동봉합니다.
 
 ```bash
 npm ci
@@ -70,3 +70,7 @@ node node_modules/@vscode/vsce/vsce show smoke-19.pq-explorer --json
 `DONE Published`는 업로드 접수 결과입니다. 게시 완료 판단 전 Gallery 조회의 `versions`에서 같은 버전의 `win32-x64`·`linux-x64`가 모두 있고 각 항목의 `flags`에 `Validated` 비트(`1`)가 설정됐는지 확인합니다. 각 플랫폼의 공개 VSIX 다운로드와 SHA-256 일치도 확인합니다. 최초 0.1.11 게시에서는 두 업로드가 성공 응답을 반환했지만 Linux 항목이 없어, Windows 검증 완료 후 Linux 패키지를 따로 재게시했습니다. 최초 누락의 서버 내부 원인은 확인되지 않았습니다.
 
 WSL은 Linux workspace 확장 호스트에서 실행되므로 Linux 패키지가 필요합니다. Windows 패키지가 공개됐어도 Linux 항목이 없으면 WSL 설치 시 플랫폼 미지원 오류가 발생합니다. [공식 플랫폼별 게시 안내](https://code.visualstudio.com/api/working-with-extensions/publishing-extension#platform-specific-extensions)를 참고하세요.
+
+## 파일 형식 확장 검증
+
+0.1.12에서 CSV·TSV·SBDF·XLSX를 추가했습니다. 형식별 동작·참고 구현과 검증 범위는 [파일 형식 구현 기록](docs/implementation/multi-format.md)을 참고하세요. `npm run build`는 SQL 편집기와 XLSX reader 번들을 생성합니다. XLSX 원본 모듈과 개발 의존성은 VSIX에 넣지 않으며 yauzl·pend는 ZIP 사전 검사용 런타임 의존성으로 동봉합니다.

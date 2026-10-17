@@ -301,7 +301,7 @@ function render(resultValue) {
 async function query(nextRowOffset = 0, nextColumnOffset = 0, limits = {}) {
   if (!runtimeReady || changingSource) return;
   const sourcePath = $("source").value.trim();
-  const sourceChanged = sourcePath !== currentSourcePath;
+  const sourceChanged = sourcePath !== currentSourcePath || ($("sheet").value || null) !== (sourceMetadata?.selected_sheet || null);
   if (sourceChanged && $("run").disabled) return;
   const sequence = ++querySequence;
   const sql = sqlEditor.getValue();
@@ -313,10 +313,11 @@ async function query(nextRowOffset = 0, nextColumnOffset = 0, limits = {}) {
       changingSource = true;
       $("source").disabled = true;
       $("cancel").disabled = true;
-      status("Parquet 소스 확인 중…");
+      $("sheet").disabled = true;
+      status("데이터 소스 확인 중…");
       try {
-        if (!sourcePath) throw new Error("Parquet 파일 또는 dataset 폴더 경로를 입력하세요.");
-        const metadata = await request("source", { path: sourcePath });
+        if (!sourcePath) throw new Error("데이터 파일 또는 Parquet dataset 폴더 경로를 입력하세요.");
+        const metadata = await request("source", { path: sourcePath, ...(sourcePath === currentSourcePath && $("sheet").value ? { sheet: $("sheet").value } : {}) });
         applyMetadata(metadata);
         nextRowOffset = 0;
         nextColumnOffset = 0;
@@ -330,6 +331,7 @@ async function query(nextRowOffset = 0, nextColumnOffset = 0, limits = {}) {
       } finally {
         changingSource = false;
         $("source").disabled = false;
+        $("sheet").disabled = false;
       }
     }
     if (colorQuerySql !== undefined && colorQuerySql !== sql) {
@@ -375,6 +377,11 @@ function applyMetadata(metadata) {
   sourceMetadata = metadata;
   metadataGeneration++;
   $("source").value = metadata.source_path;
+  $("sheet").replaceChildren(...(metadata.sheets || []).map(name => {
+    const option = document.createElement("option"); option.value = name; option.textContent = name; return option;
+  }));
+  $("sheet").hidden = !(metadata.sheets?.length);
+  $("sheet").value = metadata.selected_sheet || "";
   renderMetadata();
 }
 

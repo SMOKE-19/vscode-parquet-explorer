@@ -8,6 +8,7 @@ const { randomUUID } = require("node:crypto");
 const { DuckDBInstance, StatementType, listValue } = require("@duckdb/node-api");
 const { safeValue } = require("./values");
 const { withoutComments, errorPosition } = require("./sql");
+const { formatOf, importSbdf, importXlsx } = require("./formats");
 
 const quote = value => "'" + value.replaceAll("'", "''") + "'";
 const identifier = value => '"' + value.replaceAll('"', '""') + '"';
@@ -24,9 +25,14 @@ function size(value, label) {
 
 async function discover(source, root) {
   const requested = path.resolve(root, expand(String(source)));
-  const resolved = await fs.realpath(requested).catch(() => { throw new Error(`Parquet 파일을 찾을 수 없습니다: ${requested}`); });
+  const resolved = await fs.realpath(requested).catch(() => { throw new Error(`데이터 파일을 찾을 수 없습니다: ${requested}`); });
   if (!within(root, resolved)) throw new Error(`허용된 source root 밖의 경로입니다: ${resolved}`);
   const stat = await fs.stat(resolved);
+  if (stat.isFile()) {
+    const format = formatOf(resolved);
+    if (!format) throw new Error("Parquet·CSV·TSV·SBDF·XLSX 파일 또는 Parquet dataset 폴더를 선택하세요.");
+    return { source: resolved, kind: "file", format, files: [resolved] };
+  }
   const files = [];
   const visited = new Set();
   async function walk(candidate) {
@@ -46,7 +52,7 @@ async function discover(source, root) {
   await walk(resolved);
   if (!files.length) throw new Error(`Parquet 파일을 찾을 수 없습니다: ${resolved}`);
   files.sort();
-  return { source: resolved, kind: stat.isDirectory() ? "dataset" : "file", files: [...new Set(files)] };
+  return { source: resolved, kind: "dataset", format: "parquet", files: [...new Set(files)] };
 }
 
 class ParquetEngine {
@@ -90,8 +96,15 @@ class ParquetEngine {
   }
 
   async register(connection) {
+    if (this.format === "sbdf" || this.format === "xlsx") {
+      const result = this.format === "sbdf" ? await importSbdf(connection, this.source) : await importXlsx(connection, this.source, this.settings.sheet);
+      Object.assign(this, result);
+      return;
+    }
     const files = "[" + this.files.map(quote).join(",") + "]";
-    await connection.run(`CREATE VIEW data AS SELECT * FROM read_parquet(${files}, union_by_name=true, hive_partitioning=false)`);
+    const reader = this.format === "parquet" ? `read_parquet(${files}, union_by_name=true, hive_partitioning=false)`
+      : `read_csv(${files}, auto_detect=true, ${this.format === "tsv" ? "delim='\\t', " : ""}hive_partitioning=false)`;
+    await connection.run(`CREATE VIEW data AS SELECT * FROM ${reader}`);
   }
   async restrict(connection) {
     await connection.run("SET allowed_paths = ?", [listValue(this.files)]);
@@ -101,11 +114,13 @@ class ParquetEngine {
   close() { this.connection?.closeSync(); this.connection = undefined; this.db?.closeSync(); this.db = undefined; }
   metadata() {
     return { source_path: this.source, source_kind: this.kind, file_count: this.files.length,
-      file_bytes: this.fileBytes, row_count: null, column_count: this.columns.length,
+      file_bytes: this.fileBytes, row_count: this.rowCount ?? null, column_count: this.columns.length,
+      format: this.format, sheets: this.sheets ?? [], selected_sheet: this.selectedSheet ?? null,
       columns: this.columns, allowed_root: this.root, view_name: "data", default_query: "SELECT * FROM data" };
   }
   async sourceStatistics() {
     const started = performance.now();
+    if (this.rowCount != null) return { source_path: this.source, column_count: this.columns.length, row_count: this.rowCount, method: "import", elapsed_ms: 0 };
     const db = await DuckDBInstance.create(":memory:", { ...this.config, threads: "1" });
     let connection, timer, timedOut = false;
     try {
@@ -116,7 +131,7 @@ class ParquetEngine {
       if (this.statisticsStopping) throw new Error("DuckDB 통계 작업자가 중지되었습니다.");
       timer = setTimeout(() => { timedOut = true; connection.interrupt(); }, 120000);
       let rows, method = "parquet_footer";
-      try { rows = await this.footerRows(connection); }
+      try { if (this.format !== "parquet") throw new Error("푸터 통계가 없는 형식입니다."); rows = await this.footerRows(connection); }
       catch (error) {
         if (timedOut || this.statisticsStopping) throw error;
         method = "query";
@@ -142,7 +157,7 @@ class ParquetEngine {
     if (text.length > 100000) throw new Error("SQL은 100,000자를 넘을 수 없습니다.");
     const normalized = withoutComments(text).trim().replace(/;\s*$/, "").trim();
     if (!/^(?:select|with|from|values|describe\s+select)\b/i.test(normalized)) throw new Error("SELECT 계열의 읽기 전용 SQL만 실행할 수 있습니다.");
-    if (/\b(?:read_(?:csv|json|parquet|text|blob)|(?:parquet|csv|json|sqlite|postgres|mysql)_scan|glob|attach)\b/i.test(normalized)) {
+    if (/\b(?:read_(?:csv|json|parquet|text|blob|xlsx)|(?:parquet|csv|json|sqlite|postgres|mysql)_scan|glob|attach)\b/i.test(normalized)) {
       throw new Error("Explorer SQL에서는 외부 file/database를 여는 함수를 사용할 수 없습니다.");
     }
     const statements = await this.connection.extractStatements(text);

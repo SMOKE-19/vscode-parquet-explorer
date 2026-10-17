@@ -11,7 +11,8 @@ function startBridge({ source, root, extensionPath, settings = {}, onFailure }) 
     const pending = new Map();
     let nextId = 1, ready = false, stopped = false;
     const exited = new Promise(resolveExit => worker.once("exit", resolveExit));
-    const startupTimer = setTimeout(() => fail(new Error("DuckDB 작업자 시작 시간 초과")), 20000);
+    const startupMs = /\.(sbdf|xlsx)$/i.test(source) ? 120000 : 20000;
+    const startupTimer = setTimeout(() => fail(new Error("DuckDB 작업자 시작 시간 초과")), startupMs);
 
     function fail(error) {
       if (stopped) return;

@@ -1,5 +1,14 @@
 # 변경 이력
 
+## 0.1.12
+
+- CSV·TSV·SBDF·XLSX 파일 열기와 공통 DuckDB SQL 조회 추가.
+- XLSX 시트 선택·타입 추론·캐시된 수식 결과 표시, 큰 정수 보존 추가.
+- SBDF 1.0 plain·RLE·bit 인코딩, NULL·날짜·시간·Binary·Decimal 정밀도 지원.
+- XLSX 압축 해제·셀 주소 크기와 SBDF slice 제한, 원본 경로 검사 유지.
+- XLSX 읽기를 Node 호환 번들에 포함해 Python과 추가 런타임 설치 없이 사용.
+
+
 ## 0.1.11 — 2026-10-17
 
 - 공개용 소개·사용 방법·예제 화면을 정리했습니다.

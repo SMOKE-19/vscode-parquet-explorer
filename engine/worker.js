@@ -20,7 +20,7 @@ async function dispatch(message) {
     else if (operation === "query") result = await engine.query(payload);
     else if (operation === "lint") result = await engine.lint(payload.sql);
     else if (operation === "source") {
-      const next = await ParquetEngine.open(payload.path, workerData.root, workerData.settings);
+      const next = await ParquetEngine.open(payload.path, workerData.root, { ...workerData.settings, sheet: payload.sheet });
       const previous = engine;
       engine = next;
       previous.close();

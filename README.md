@@ -1,6 +1,6 @@
 # PQ Explorer
 
-Parquet 파일과 데이터셋을 VS Code에서 열고 SQL로 탐색하세요. DuckDB가 확장에 포함되어 있어 Python·uv·Node.js를 따로 설치할 필요가 없습니다.
+Parquet·CSV·TSV·SBDF·XLSX 파일을 VS Code에서 열고 SQL로 탐색하세요. DuckDB가 확장에 포함되어 있어 Python·uv·Node.js를 따로 설치할 필요가 없습니다.
 
 ![Parquet SQL 조회와 칼럼별 반복 값 강조](assets/explorer.png)
 
@@ -8,7 +8,7 @@ Parquet 파일과 데이터셋을 VS Code에서 열고 SQL로 탐색하세요. D
 
 ## 주요 기능
 
-- `.parquet` 파일을 열면 SQL 편집기와 표를 바로 표시합니다.
+- 지원하는 데이터 파일을 열면 SQL 편집기와 표를 바로 표시합니다.
 - 파일 또는 데이터셋 폴더 경로를 입력하고 `Ctrl+Enter`로 실행합니다.
 - 기본 50행·20칼럼씩 조회하며 행·칼럼 이동과 칼럼 고정을 지원합니다.
 - LIST·STRUCT·BLOB을 표시하고, 큰 중첩 값은 원소 수와 미리보기로 제한합니다.
@@ -20,7 +20,7 @@ Parquet 파일과 데이터셋을 VS Code에서 열고 SQL로 탐색하세요. D
 ## 시작하기
 
 1. 확장 목록에서 **PQ Explorer**를 설치합니다.
-2. 탐색기에서 `.parquet` 파일을 엽니다. 다른 편집기로 열리면 **Reopen Editor With... → PQ Explorer**를 선택하세요.
+2. 탐색기에서 `.parquet`·`.csv`·`.tsv`·`.sbdf`·`.xlsx` 파일을 엽니다. 다른 편집기로 열리면 **Reopen Editor With... → PQ Explorer**를 선택하세요.
 3. SQL을 작성하고 **실행** 또는 `Ctrl+Enter`를 누릅니다.
 
 ```sql
@@ -29,9 +29,26 @@ FROM data
 LIMIT 50;
 ```
 
-데이터셋 폴더는 **PQ Explorer: Open Parquet** 명령으로 선택합니다. 상단 경로를 바꾸고 실행하면 새 소스를 검증한 뒤 조회합니다. 잘못된 경로는 기존 SQL과 결과를 유지합니다.
+데이터셋 폴더는 **PQ Explorer: Open Data File** 명령으로 선택합니다. 상단 경로를 바꾸고 실행하면 새 소스를 검증한 뒤 조회합니다. 잘못된 경로는 기존 SQL과 결과를 유지합니다.
 
 `data`는 선택한 원본을 가리키는 읽기 전용 뷰입니다. `DESCRIBE SELECT * FROM data`로 칼럼과 타입을 확인할 수 있습니다. 상단의 원본 행 수는 SQL 필터 적용 전 수치이며, 정확한 SQL 결과 행 수 계산은 별도 설정입니다.
+
+## 지원 파일 형식
+
+| 형식 | 읽기 동작 |
+| --- | --- |
+| Parquet | 파일 또는 재귀 dataset 폴더. 첫 페이지 이후 푸터에서 원본 행 수 갱신 |
+| CSV·TSV | UTF-8(BOM 포함). DuckDB가 헤더·타입·구분자를 감지하며 TSV는 탭 사용 |
+| SBDF | SBDF 1.0의 plain·RLE·bit 인코딩. NULL·문자열·수치·날짜·시간·Binary 표시 |
+| XLSX | 첫 행을 헤더로 사용. 상단 시트 선택 후 **실행**으로 변경 |
+
+모든 형식은 `SELECT * FROM data`로 조회하며 필터·정렬·집계·즐겨찾기를 공통으로 사용할 수 있습니다. 폴더 열기는 Parquet dataset만 지원합니다. SBDF·XLSX는 최초 열기 시 선택한 데이터를 DuckDB 메모리 테이블에 읽어 들이므로 큰 파일은 준비 시간이 필요합니다. 원본은 수정하지 않습니다.
+
+SBDF Decimal은 정밀도와 지수 범위를 보존하는 문자열입니다. SQL 계산 시 필요한 `DECIMAL` 타입으로 명시적으로 변환하세요. Spotfire 서식·분류·칼럼 설명 메타데이터는 표에 재현하지 않습니다.
+
+XLSX는 기본 첫 시트를 표시합니다. 빈 헤더는 `column_1`처럼 채우고 중복 헤더에는 번호를 붙입니다. 날짜는 타임스탬프, 수치·Boolean은 해당 타입으로 가져오며 혼합 타입과 안전 정수 범위를 넘는 정수는 문자열로 보존합니다. 수식은 Excel이 저장한 계산 결과를 읽으며 재계산하지 않습니다. 계산 결과가 없는 수식은 빈 셀로 표시합니다. `.xls`·매크로·암호화 파일은 지원하지 않습니다.
+
+XLSX의 상한은 파일 32 MiB·압축 해제 합계 64 MiB·시트당 100,000행(헤더 포함)·10,000칼럼·2,000,000셀입니다. SBDF는 slice당 최대 1,000,000행·2,000,000셀·128 MiB를 처리하며 단일 문자열·Binary 블록은 64 MiB까지 허용합니다. 상한을 넘으면 오류를 표시합니다.
 
 ## SQL 즐겨찾기
 

@@ -1,8 +1,8 @@
 {
   "name": "pq-explorer",
   "displayName": "PQ Explorer",
-  "description": "Read-only DuckDB Parquet Explorer for VS Code.",
-  "version": "0.1.11",
+  "description": "Read-only DuckDB viewer for Parquet, CSV, TSV, SBDF and Excel files.",
+  "version": "0.1.12",
   "publisher": "smoke-19",
   "repository": {
     "type": "git",
@@ -37,7 +37,8 @@
     "@vscode/vsce": "4.0.0",
     "codemirror": "^6.0.2",
     "esbuild": "^0.28.2",
-    "yauzl": "3.4.0",
+    "read-excel-file": "9.3.12",
+    "saxen": "11.2.0",
     "yazl": "2.5.1"
   },
   "activationEvents": [
@@ -52,6 +53,18 @@
         "selector": [
           {
             "filenamePattern": "*.parquet"
+          },
+          {
+            "filenamePattern": "*.csv"
+          },
+          {
+            "filenamePattern": "*.tsv"
+          },
+          {
+            "filenamePattern": "*.sbdf"
+          },
+          {
+            "filenamePattern": "*.xlsx"
           }
         ],
         "priority": "default"
@@ -60,14 +73,14 @@
     "commands": [
       {
         "command": "pqExplorer.openParquetExplorer",
-        "title": "PQ Explorer: Open Parquet"
+        "title": "PQ Explorer: Open Data File"
       }
     ],
     "menus": {
       "explorer/context": [
         {
           "command": "pqExplorer.openParquetExplorer",
-          "when": "resourceExtname == .parquet",
+          "when": "resourceExtname =~ /\\.(parquet|csv|tsv|sbdf|xlsx)$/i",
           "group": "navigation"
         }
       ]
@@ -122,15 +135,16 @@
     }
   },
   "scripts": {
-    "check": "node --check extension.js && node --check favorites.js && node --check bridge.js && node --check engine/parquet.js && node --check engine/worker.js && node --check engine/values.js && node --check engine/sql.js && node --check media/explorer.js && node --check media/sql-editor.source.mjs && node --check scripts/package_vsix.js && node --check scripts/benchmark.js && node --check scripts/marketplace_assets.js && node --check scripts/audit_vsix.js",
-    "build": "esbuild media/sql-editor.source.mjs --bundle --format=iife --platform=browser --target=es2022 --minify --outfile=media/sql-editor.js",
+    "check": "node --check extension.js && node --check favorites.js && node --check bridge.js && node --check engine/parquet.js && node --check engine/worker.js && node --check engine/values.js && node --check engine/sql.js && node --check media/explorer.js && node --check media/sql-editor.source.mjs && node --check scripts/package_vsix.js && node --check scripts/benchmark.js && node --check scripts/marketplace_assets.js && node --check scripts/audit_vsix.js && node --check engine/formats.js && node --check engine/sbdf.js && node --check engine/xlsx-reader.source.mjs",
+    "build": "esbuild media/sql-editor.source.mjs --bundle --format=iife --platform=browser --target=es2022 --minify --outfile=media/sql-editor.js && esbuild engine/xlsx-reader.source.mjs --bundle --format=cjs --platform=node --target=node18 --minify --outfile=engine/xlsx-reader.js --metafile=dist/xlsx-reader-meta.json",
     "vscode:prepublish": "npm run build",
     "test": "npm run build && node --test tests/*.test.js",
     "package": "node scripts/package_vsix.js",
     "benchmark": "node scripts/benchmark.js"
   },
   "dependencies": {
-    "@duckdb/node-api": "1.5.6-r.1"
+    "@duckdb/node-api": "1.5.6-r.1",
+    "yauzl": "3.4.0"
   },
   "icon": "assets/icon.png",
   "keywords": [
@@ -139,7 +153,11 @@
     "sql",
     "data",
     "viewer",
-    "dataset"
+    "dataset",
+    "csv",
+    "sbdf",
+    "excel",
+    "xlsx"
   ],
   "galleryBanner": {
     "color": "#093b2b",
