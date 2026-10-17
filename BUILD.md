@@ -67,7 +67,7 @@ node node_modules/@vscode/vsce/vsce show smoke-19.pq-explorer --json
 
 `<version>`은 실제 버전으로 바꾸세요. 로그인 토큰은 터미널 입력창에서만 입력합니다. `publish --packagePath`는 지정한 파일을 외부 Marketplace에 게시하는 명령입니다.
 
-`DONE Published`는 업로드 접수 결과입니다. 게시 완료 판단 전 Gallery 조회의 `versions`에서 같은 버전의 `win32-x64`·`linux-x64`가 모두 있고 각 항목의 `flags`에 `Validated` 비트(`1`)가 설정됐는지 확인합니다. 각 플랫폼의 공개 VSIX 다운로드와 SHA-256 일치도 확인합니다. 최초 0.1.11 게시에서는 두 업로드가 성공 응답을 반환했지만 Linux 항목이 없어, Windows 검증 완료 후 Linux 패키지를 따로 재게시했습니다. 최초 누락의 서버 내부 원인은 확인되지 않았습니다.
+`DONE Published`는 업로드 접수 결과입니다. 게시 완료 판단 전 Gallery 조회의 `versions`에서 같은 버전의 `win32-x64`·`linux-x64`가 모두 있고 각 항목의 `flags`에 `Validated` 비트(`1`)가 설정됐는지 확인합니다. 각 플랫폼의 공개 VSIX 다운로드와 SHA-256 일치도 확인합니다. HTTP 응답에 `Content-Encoding: gzip`이 있으면 전송 압축을 해제한 VSIX로 해시를 계산합니다. 최초 0.1.11 게시에서는 두 업로드가 성공 응답을 반환했지만 Linux 항목이 없어, Windows 검증 완료 후 Linux 패키지를 따로 재게시했습니다. 최초 누락의 서버 내부 원인은 확인되지 않았습니다.
 
 WSL은 Linux workspace 확장 호스트에서 실행되므로 Linux 패키지가 필요합니다. Windows 패키지가 공개됐어도 Linux 항목이 없으면 WSL 설치 시 플랫폼 미지원 오류가 발생합니다. [공식 플랫폼별 게시 안내](https://code.visualstudio.com/api/working-with-extensions/publishing-extension#platform-specific-extensions)를 참고하세요.
 

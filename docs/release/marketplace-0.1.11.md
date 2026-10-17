@@ -74,3 +74,7 @@ node node_modules/@vscode/vsce/vsce publish --packagePath dist/pq-explorer-0.1.1
 
 - 검증 대기 중 일반 `vspackage?targetPlatform=linux-x64` 다운로드 경로는 HTTP 200이라도 Linux 해시와 일치하지 않았다. 직접 확인한 Linux CDN 자산만 임시 수동 설치용으로 사용한다.
 - 검증한 Linux CDN 자산: `https://smoke-19.gallerycdn.vsassets.io/extensions/smoke-19/pq-explorer/0.1.11/1792221748565/Microsoft.VisualStudio.Services.VSIXPackage`. 응답은 ZIP이며 파일명 헤더가 없으므로 `pq-explorer-0.1.11-linux-x64.vsix`로 저장한다.
+
+## 후속 다운로드 검증 정정
+
+0.1.12 배포 중 0.1.11의 일반 `vspackage?targetPlatform=linux-x64` 응답을 재확인했다. 응답은 `Content-Encoding: gzip`이었으며, 전송 압축을 해제한 파일의 target과 SHA-256은 검증한 Linux 패키지와 일치했다. 위 일반 다운로드 경로의 과거 해시 불일치 관찰에는 전송 압축 미해제가 섞여 있으므로, 그 관찰만으로 잘못된 플랫폼 파일 반환을 판단할 수 없다. CDN 원본 파일 검증 결과는 유효하다.
