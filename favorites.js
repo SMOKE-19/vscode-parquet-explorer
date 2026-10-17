@@ -5,6 +5,13 @@ const path = require("node:path");
 const { randomUUID } = require("node:crypto");
 
 const LIMIT = 100;
+const MAX_SQL_LENGTH = 100000;
+const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/;
+
+function validateId(id) {
+  if (typeof id !== "string" || !SAFE_ID.test(id)) throw new Error("올바르지 않은 즐겨찾기 ID입니다.");
+  return id;
+}
 
 function preview(sql) {
   const line = sql.replace(/\s+/g, " ").trim();
@@ -36,17 +43,33 @@ class FavoritesStore {
       }
     }
     let contents;
-    try { contents = await fs.readFile(this.indexPath, "utf8"); }
+    try {
+      if ((await fs.stat(this.indexPath)).size > 1048576) throw new Error("즐겨찾기 인덱스 크기가 너무 큽니다.");
+      contents = await fs.readFile(this.indexPath, "utf8");
+    }
     catch (error) {
       if (error.code !== "ENOENT") throw error;
       this.loaded = true;
       return;
     }
     const index = JSON.parse(contents);
-    if (index.version !== 1 || !Array.isArray(index.items)) {
+    if (index?.version !== 1 || !Array.isArray(index.items) || index.items.length > LIMIT) {
       throw new Error(`지원하지 않는 즐겨찾기 인덱스입니다: ${this.indexPath}`);
     }
-    this.items = index.items;
+    const seen = new Set();
+    for (const item of index.items) {
+      validateId(item?.id);
+      if (seen.has(item.id) || typeof item.alias !== "string" || !item.alias.trim() || item.alias.length > 200
+          || (item.description != null && (typeof item.description !== "string" || item.description.length > 2000))) {
+        throw new Error("올바르지 않은 즐겨찾기 인덱스입니다.");
+      }
+      seen.add(item.id);
+    }
+    this.items = index.items.map(item => ({ ...item,
+      description: item.description || "", preview: typeof item.preview === "string" ? item.preview.slice(0, 120) : "",
+      useCount: Number.isSafeInteger(item.useCount) && item.useCount >= 0 ? item.useCount : 0,
+      pinned: item.pinned === true,
+    }));
     this.loaded = true;
   }
 
@@ -56,10 +79,14 @@ class FavoritesStore {
   }
 
   async get(id) {
+    validateId(id);
     await this.load();
     const item = this.items.find((entry) => entry.id === id);
     if (!item) throw new Error("즐겨찾기를 찾을 수 없습니다.");
-    const sql = await fs.readFile(path.join(this.sqlFolder, `${item.id}.sql`), "utf8");
+    const sqlPath = path.join(this.sqlFolder, `${item.id}.sql`);
+    if ((await fs.stat(sqlPath)).size > MAX_SQL_LENGTH * 4) throw new Error("저장된 SQL 크기가 너무 큽니다.");
+    const sql = await fs.readFile(sqlPath, "utf8");
+    if (sql.length > MAX_SQL_LENGTH) throw new Error("SQL은 100,000자를 넘을 수 없습니다.");
     return { ...item, sql };
   }
 
@@ -87,6 +114,9 @@ class FavoritesStore {
       const code = String(sql || "");
       if (!name) throw new Error("별칭을 입력하세요.");
       if (!code.trim()) throw new Error("저장할 SQL이 비어 있습니다.");
+      if (name.length > 200 || String(description).length > 2000) throw new Error("별칭은 200자, 설명은 2,000자 이내로 입력하세요.");
+      if (code.length > MAX_SQL_LENGTH) throw new Error("SQL은 100,000자를 넘을 수 없습니다.");
+      if (id != null) validateId(id);
       const existing = id ? this.items.find((item) => item.id === id) : undefined;
       if (id && !existing) throw new Error("수정할 즐겨찾기를 찾을 수 없습니다.");
       if (!existing && this.items.length >= LIMIT) throw new Error(`즐겨찾기는 최대 ${LIMIT}개까지 저장할 수 있습니다.`);
@@ -140,6 +170,7 @@ class FavoritesStore {
 
   togglePin(id) {
     return this.mutate(async () => {
+      validateId(id);
       await this.load();
       const item = this.items.find((entry) => entry.id === id);
       if (!item) throw new Error("즐겨찾기를 찾을 수 없습니다.");
@@ -152,6 +183,7 @@ class FavoritesStore {
 
   remove(id) {
     return this.mutate(async () => {
+      validateId(id);
       await this.load();
       const item = this.items.find((entry) => entry.id === id);
       if (!item) return;

@@ -7,8 +7,12 @@ let nextId = 1;
 let querySequence = 0;
 let activeRequestId;
 let runtimeReady = false;
-let setupBusy = false;
-let setupInfo;
+let initialQueryApplied = false;
+let currentSourcePath;
+let changingSource = false;
+let sourceMetadata;
+let metadataGeneration = 0;
+let statisticsRequestedGeneration;
 let rowOffset = 0;
 let columnOffset = 0;
 let activeRowLimit = 50;
@@ -36,48 +40,6 @@ function request(operation, payload = {}) {
 function status(message, error = false) {
   $("status").textContent = message;
   $("status").classList.toggle("error", error);
-}
-
-function setupControls(busy) {
-  setupBusy = busy;
-  $("runtime-setup").setAttribute("aria-busy", String(busy));
-  for (const id of ["setup-choose", "setup-check", "setup-back", "runtime-retry"]) $(id).disabled = busy;
-  $("setup-install").disabled = busy || !!setupInfo?.installing || !setupInfo?.uvAvailable;
-  $("setup-progress").hidden = !busy && !setupInfo?.installing;
-}
-
-function renderSetup(info) {
-  setupInfo = { ...setupInfo, ...info };
-  $("runtime-environment").textContent = $("setup-environment").textContent = setupInfo.environment;
-  $("runtime-python").textContent = $("setup-python").textContent = setupInfo.currentPython;
-  $("setup-directory").textContent = setupInfo.venv;
-  $("runtime-directory").textContent = $("setup-manual-directory").textContent = setupInfo.directory;
-  $("runtime-commands").textContent = $("setup-commands").textContent = setupInfo.commands;
-  $("setup-uv").hidden = setupInfo.uvAvailable !== false;
-  $("setup-uv-reason").textContent = setupInfo.uvError || "";
-  if (setupInfo.log !== undefined) $("setup-log").textContent = setupInfo.log;
-  setupControls(setupBusy);
-}
-
-async function setupAction(operation) {
-  if (setupBusy) return;
-  setupControls(true);
-  $("setup-error").textContent = "";
-  $("setup-status").textContent = operation === "setup.install" ? "환경 준비 중…" : "환경 확인 중…";
-  try {
-    const response = await request(operation);
-    if (operation === "setup.info") {
-      renderSetup(response);
-      $("setup-status").textContent = response.installing ? "다른 탭에서 환경을 설치 중입니다…" : response.uvAvailable ? "설치를 시작하거나 기존 Python을 선택하세요." : "uv 설치 후 다시 확인하세요. 기존 Python도 선택할 수 있습니다.";
-    } else if (response?.cancelled) $("setup-status").textContent = "Python 선택을 취소했습니다.";
-  } catch (error) {
-    $("setup-error").textContent = String(error.message || error);
-    $("setup-status").textContent = "설정을 완료하지 못했습니다. 다시 시도하거나 로그를 확인하세요.";
-    if (operation === "setup.retry" && $("runtime-setup").hidden) {
-      $("runtime-required").hidden = true;
-      $("runtime-setup").hidden = false;
-    }
-  } finally { setupControls(false); }
 }
 
 function formatCell(value) {
@@ -337,18 +299,46 @@ function render(resultValue) {
 }
 
 async function query(nextRowOffset = 0, nextColumnOffset = 0, limits = {}) {
-  if (!runtimeReady) return;
+  if (!runtimeReady || changingSource) return;
+  const sourcePath = $("source").value.trim();
+  const sourceChanged = sourcePath !== currentSourcePath;
+  if (sourceChanged && $("run").disabled) return;
   const sequence = ++querySequence;
   const sql = sqlEditor.getValue();
-  if (colorQuerySql !== undefined && colorQuerySql !== sql) {
-    pinnedColumns = [];
-    activeColumnLimit = Number($("column-limit").value);
-  }
-  status("DuckDB 조회 중…");
+  $("source-error").hidden = true;
+  $("source").removeAttribute("aria-invalid");
   $("run").disabled = true;
-  $("cancel").disabled = false;
-  activeRequestId = `query-${Date.now()}-${sequence}`;
   try {
+    if (sourceChanged) {
+      changingSource = true;
+      $("source").disabled = true;
+      $("cancel").disabled = true;
+      status("Parquet 소스 확인 중…");
+      try {
+        if (!sourcePath) throw new Error("Parquet 파일 또는 dataset 폴더 경로를 입력하세요.");
+        const metadata = await request("source", { path: sourcePath });
+        applyMetadata(metadata);
+        nextRowOffset = 0;
+        nextColumnOffset = 0;
+        limits = {};
+      } catch (error) {
+        $("source-error").textContent = String(error.message || error);
+        $("source-error").hidden = false;
+        $("source").setAttribute("aria-invalid", "true");
+        status("소스 경로를 확인하세요.", true);
+        return;
+      } finally {
+        changingSource = false;
+        $("source").disabled = false;
+      }
+    }
+    if (colorQuerySql !== undefined && colorQuerySql !== sql) {
+      pinnedColumns = [];
+      activeColumnLimit = Number($("column-limit").value);
+    }
+    status("DuckDB 조회 중…");
+    $("cancel").disabled = false;
+    activeRequestId = `query-${Date.now()}-${sequence}`;
     const response = await request("query", {
       sql,
       favorite_id: favoriteId,
@@ -363,6 +353,7 @@ async function query(nextRowOffset = 0, nextColumnOffset = 0, limits = {}) {
     rowOffset = response.row_offset;
     columnOffset = response.column_offset;
     render(response);
+    if (sourceChanged && sqlEditor.getValue() === sql) sqlEditor.applyLintResult({ ok: true });
   } catch (error) {
     if (sequence === querySequence) status(String(error.message || error), true);
   } finally {
@@ -370,23 +361,53 @@ async function query(nextRowOffset = 0, nextColumnOffset = 0, limits = {}) {
       $("run").disabled = false;
       $("cancel").disabled = true;
       activeRequestId = undefined;
+      refreshSourceStatistics();
+    }
+  }
+}
+
+function applyMetadata(metadata) {
+  columnColors.clear();
+  colorQuerySql = undefined;
+  pinnedColumns = [];
+  activeColumnLimit = Number($("column-limit").value);
+  currentSourcePath = metadata.source_path;
+  sourceMetadata = metadata;
+  metadataGeneration++;
+  $("source").value = metadata.source_path;
+  renderMetadata();
+}
+
+function renderMetadata(error) {
+  const rows = sourceMetadata.row_count == null ? (error ? "행 수 확인 실패" : "행 수 확인 중…") : `행 ${sourceMetadata.row_count.toLocaleString()}`;
+  $("meta").textContent = `${sourceMetadata.file_count.toLocaleString()} file(s) · ${formatBytes(sourceMetadata.file_bytes)} · 칼럼 ${sourceMetadata.column_count.toLocaleString()} · ${rows}`;
+  $("meta").title = error ? `선택한 원본 파일·데이터셋의 정보\n${error}` : "선택한 원본 파일·데이터셋의 전체 정보 (SQL 필터 적용 전)";
+}
+
+async function refreshSourceStatistics() {
+  if (!sourceMetadata || sourceMetadata.row_count != null || statisticsRequestedGeneration === metadataGeneration) return;
+  const generation = metadataGeneration;
+  statisticsRequestedGeneration = generation;
+  renderMetadata();
+  try {
+    const statistics = await request("stats");
+    if (generation !== metadataGeneration || statistics.source_path !== currentSourcePath) return;
+    sourceMetadata = { ...sourceMetadata, row_count: statistics.row_count, column_count: statistics.column_count };
+    renderMetadata();
+  } catch (error) {
+    if (generation === metadataGeneration) {
+      statisticsRequestedGeneration = undefined;
+      renderMetadata(String(error.message || error));
     }
   }
 }
 
 async function refreshMetadata() {
-  const metadata = await request("meta");
-  columnColors.clear();
-  colorQuerySql = undefined;
-  pinnedColumns = [];
-  activeColumnLimit = Number($("column-limit").value);
-  $("source").value = metadata.source_path;
-  const rows = metadata.row_count == null ? "행 수는 빠른 미리보기에서 생략" : `행 ${metadata.row_count.toLocaleString()}`;
-  $("meta").textContent = `${metadata.file_count.toLocaleString()} file(s) · ${formatBytes(metadata.file_bytes)} · 칼럼 ${metadata.column_count.toLocaleString()} · ${rows}`;
+  applyMetadata(await request("meta"));
 }
 
 function runQuery() {
-  query();
+  if (!$("run").disabled) return query();
 }
 
 function toggleColumnPin(index) {
@@ -419,44 +440,46 @@ window.addEventListener("message", async (event) => {
   if (message.type === "startupError") {
     runtimeReady = false;
     $("meta").textContent = "DuckDB 작업자 시작 실패";
-    if (message.setupRequired) {
-      renderSetup(message.setup);
-      $("runtime-reason").textContent = String(message.error).split("\n")[0];
-      $("runtime-required").hidden = !$("runtime-setup").hidden;
-      $("explorer-content").hidden = true;
-    } else if (!$("runtime-setup").hidden) $("setup-error").textContent = message.error;
-    else status(message.error, true);
-  } else if (message.type === "setupProgress") {
-    renderSetup({ installing: message.installing, log: message.log });
-    $("setup-status").textContent = message.message;
+    $("runtime-reason").textContent = message.error;
+    $("runtime-error").hidden = false;
+    $("explorer-content").hidden = true;
+    status(message.error, true);
   } else if (message.type === "ready") {
     runtimeReady = true;
-    $("runtime-required").hidden = $("runtime-setup").hidden = true;
+    $("runtime-error").hidden = true;
     $("explorer-content").hidden = false;
-    try { await refreshMetadata(); await query(); }
+    try {
+      await refreshMetadata();
+      if (!initialQueryApplied && typeof message.initialSql === "string" && message.initialSql.trim()) {
+        sqlEditor.setValue(message.initialSql);
+        initialQueryApplied = true;
+      }
+      await query();
+    }
     catch (error) { status(String(error.message || error), true); }
   }
 });
 
-$("setup-open").addEventListener("click", () => {
-  $("runtime-required").hidden = true;
-  $("runtime-setup").hidden = false;
-  $("setup-title").focus();
-  setupAction("setup.info");
-});
-$("setup-install").addEventListener("click", () => setupAction("setup.install"));
-$("setup-choose").addEventListener("click", () => setupAction("setup.choose"));
-$("setup-check").addEventListener("click", () => setupAction("setup.info"));
-$("runtime-retry").addEventListener("click", () => setupAction("setup.retry"));
-$("setup-uv-help").addEventListener("click", async () => {
-  try { await request("setup.uvHelp"); }
-  catch (error) { $("setup-error").textContent = String(error.message || error); }
-});
-$("setup-back").addEventListener("click", () => {
-  $("runtime-setup").hidden = true;
-  $("runtime-required").hidden = false;
-  $("setup-open").focus();
-});
+async function restartWorker() {
+  $("runtime-retry").disabled = $("restart-worker").disabled = true;
+  status("DuckDB 작업자를 재시작하는 중…");
+  try {
+    const restarted = await request("restart");
+    runtimeReady = true;
+    $("runtime-error").hidden = true;
+    $("explorer-content").hidden = false;
+    await refreshMetadata();
+    if (!initialQueryApplied && typeof restarted.initialSql === "string" && restarted.initialSql.trim()) {
+      sqlEditor.setValue(restarted.initialSql);
+      initialQueryApplied = true;
+    }
+    await query();
+  } catch (error) {
+    $("runtime-reason").textContent = String(error.message || error);
+    status(String(error.message || error), true);
+  } finally { $("runtime-retry").disabled = $("restart-worker").disabled = false; }
+}
+$("runtime-retry").addEventListener("click", restartWorker);
 
 $("run").addEventListener("click", runQuery);
 $("cancel").addEventListener("click", async () => {
@@ -466,11 +489,7 @@ $("cancel").addEventListener("click", async () => {
   try { await request("cancel", { request_id: activeRequestId }); }
   catch (error) { status(String(error.message || error), true); }
 });
-$("restart-worker").addEventListener("click", async () => {
-  status("DuckDB 작업자를 재시작하는 중…");
-  try { await request("restart"); await refreshMetadata(); await query(); }
-  catch (error) { status(String(error.message || error), true); }
-});
+$("restart-worker").addEventListener("click", restartWorker);
 $("save-favorite").addEventListener("click", async () => {
   try {
     const saved = await request("favorites.save", { id: favoriteId, sql: sqlEditor.getValue() });
@@ -501,9 +520,9 @@ $("lint").addEventListener("click", async () => {
   }
   catch (error) { status(String(error.message || error), true); }
 });
-$("open-source").addEventListener("click", async () => {
-  try { await request("source", { path: $("source").value }); await refreshMetadata(); await query(); }
-  catch (error) { status(String(error.message || error), true); }
+$("source").addEventListener("input", () => {
+  $("source-error").hidden = true;
+  $("source").removeAttribute("aria-invalid");
 });
 $("previous-page").addEventListener("click", () => {
   const count = Math.min(rowOffset, activeRowLimit);

@@ -1,70 +1,68 @@
-# PQ Explorer for VS Code
+# PQ Explorer
 
-VS Code 안에서 Parquet 파일 또는 dataset 폴더를 DuckDB로 조회합니다. `smoking-data-visualize`의 Parquet 조회 엔진을 확장에 포함했으며, Python 작업자와 표준 입출력으로 통신합니다. HTTP 서버는 실행하지 않습니다.
+Parquet 파일과 데이터셋을 VS Code에서 열고 SQL로 탐색하세요. DuckDB가 확장에 포함되어 있어 Python·uv·Node.js를 따로 설치할 필요가 없습니다.
 
-## 사용
+![Parquet SQL 조회와 칼럼별 반복 값 강조](assets/explorer.png)
 
-1. Python 3.10+와 `duckdb>=1.4,<2`가 설치된 환경을 사용하거나, 파일을 처음 열 때 **환경 설정**에서 전용 환경을 설치합니다.
-2. VS Code 확장 개발 호스트에서 이 폴더를 확장으로 실행하거나 VSIX로 설치합니다.
-3. 탐색기의 `.parquet` 파일을 열면 해당 **파일 하나**가 PQ Explorer의 기본 편집기로 표시됩니다. 우클릭의 **PQ Explorer: Open Parquet** 명령으로도 열 수 있습니다. 상단 경로에 폴더를 입력하고 **소스 열기**를 누르면 그 폴더 아래의 Parquet을 데이터셋으로 조회합니다.
-4. 기본 50행·20칼럼씩 조회하며, 표는 최대 약 10행 높이로 표시하고 내부에서 스크롤합니다. SQL을 바꾼 뒤 `Ctrl+Enter`로 재실행할 수 있습니다. 리스트 값에는 원소 수가 표시됩니다. 빠른 첫 페이지 표시를 위해 정확한 전체 행 수는 기본적으로 계산하지 않습니다.
+*화면은 공개용 예제 데이터로 구성한 PQ Explorer Webview입니다.*
 
-SQL 제목 오른쪽의 **SQL 저장**으로 별칭과 설명을 붙여 즐겨찾기를 만들 수 있습니다. **즐겨찾기**에서 별칭·설명·SQL 미리보기를 확인하고 SQL을 다시 불러옵니다. 항목 왼쪽 별표를 누르면 상단에 고정되고, 다시 누르면 고정이 해제됩니다. 고정 항목 아래는 기본적으로 실행 횟수 순이며, 정렬 메뉴로 최근 사용·최근 수정·별칭 순서를 선택할 수 있습니다. 항목 오른쪽 삭제 버튼으로 삭제합니다. 저장한 SQL을 수정한 뒤 다시 저장하면 기존 항목 수정 또는 새 항목 저장을 고를 수 있습니다. 최대 100개까지 저장하며, 성공적으로 실행한 저장 SQL만 사용 횟수에 반영합니다.
+## 주요 기능
 
-즐겨찾기는 확장의 **전역 저장소** 아래 `pq-explorer-sql-favorites/`에 `index.json`과 개별 `sql/*.sql` 파일로 저장됩니다. 기존 `sql-favorites/` 폴더가 있으면 처음 사용할 때 새 이름으로 옮깁니다. 즐겨찾기 선택 창 상단에 실제 **백업 폴더 경로**가 항상 표시되고, 복사 버튼으로 경로를 복사할 수 있습니다. 백업할 때는 `pq-explorer-sql-favorites/` 폴더 전체를 복사하세요. 로컬 VS Code에서는 로컬 컴퓨터에 저장되고, Remote SSH에서는 확장이 실행되는 SSH 서버에 저장됩니다. 경로는 화면에서 변경하지 않습니다.
+- `.parquet` 파일을 열면 SQL 편집기와 표를 바로 표시합니다.
+- 파일 또는 데이터셋 폴더 경로를 입력하고 `Ctrl+Enter`로 실행합니다.
+- 기본 50행·20칼럼씩 조회하며 행·칼럼 이동과 칼럼 고정을 지원합니다.
+- LIST·STRUCT·BLOB을 표시하고, 큰 중첩 값은 원소 수와 미리보기로 제한합니다.
+- 반복 값에 배경색을 적용해 현재 페이지의 패턴을 확인할 수 있습니다.
+- 첫 페이지 표시 후 Parquet 푸터에서 원본 행 수를 읽어 갱신합니다.
+- SQL 즐겨찾기 저장·검색·고정·정렬을 지원합니다.
+- DuckDB SQL 검사, 실행 취소, 시간 제한, 작업자 재시작을 제공합니다.
 
-확장은 `pqExplorer.pythonPath`, workspace 내부 `smoking-data-visualize/.venv`, workspace `.venv`, PATH의 `python` 순으로 선택합니다. 선택한 Python에 DuckDB가 있으면 바로 조회합니다. 경로 설정은 절대경로 또는 workspace 상대경로를 사용할 수 있습니다.
+## 시작하기
 
-Python이나 DuckDB가 없으면 **환경 설정** 버튼을 표시합니다. **기존 Python 선택**으로 이미 설치된 실행 파일을 지정하거나 **설치 시작**으로 확장 전용 환경을 준비할 수 있습니다. 설치 화면에는 실제 실행 환경과 설치 위치, 진행 상태와 로그가 표시됩니다. 전용 환경은 확장의 전역 저장소 아래 `python-runtime/.venv`에 생성하며 프로젝트의 가상환경과 분리됩니다. uv로 Python 3.13을 준비하고 DuckDB를 설치·검증한 뒤 원래 Parquet을 자동 조회합니다. uv가 없으면 **uv 설치 안내 열기**와 **다시 확인**을 사용하세요. 명령어를 직접 실행하려면 **직접 설치하기**를 펼치면 됩니다.
+1. 확장 목록에서 **PQ Explorer**를 설치합니다.
+2. 탐색기에서 `.parquet` 파일을 엽니다. 다른 편집기로 열리면 **Reopen Editor With... → PQ Explorer**를 선택하세요.
+3. SQL을 작성하고 **실행** 또는 `Ctrl+Enter`를 누릅니다.
 
-설치하거나 선택한 Python은 workspace별로 기억하며, 다른 workspace에서도 준비된 전용 환경을 재사용할 수 있습니다. `pqExplorer.pythonPath` 설정을 변경하면 변경한 설정을 우선 적용합니다. 파일을 여는 것만으로 설치하지 않으며, 여러 탭에서 설치를 요청해도 설치 작업은 하나만 실행합니다. 실패하면 로그를 확인하고 다시 시도할 수 있습니다. Windows에서는 Windows에, WSL·Remote SSH에서는 확장이 실행되는 해당 환경에 설치됩니다.
-
-```json
-{
-  "pqExplorer.pythonPath": ".venv/bin/python"
-}
+```sql
+SELECT *
+FROM data
+LIMIT 50;
 ```
 
-Windows에서는 해당 경로를 `.venv\\Scripts\\python.exe`처럼 지정할 수 있습니다. 설정을 비우면 자동 탐색합니다. 가상환경을 만들려면 `python -m venv .venv`를 실행한 뒤 해당 환경의 Python으로 `python -m pip install "duckdb>=1.4,<2"`를 실행하세요.
+데이터셋 폴더는 **PQ Explorer: Open Parquet** 명령으로 선택합니다. 상단 경로를 바꾸고 실행하면 새 소스를 검증한 뒤 조회합니다. 잘못된 경로는 기존 SQL과 결과를 유지합니다.
 
-대용량 조회 관련 설정은 VS Code의 **PQ Explorer** 설정에서 조정합니다. `queryTimeoutSeconds`는 0일 때 제한이 없고, `exactResultCount`를 켠 경우에만 각 SQL의 정확한 전체 행 수를 추가 계산합니다. `duckdbMemoryLimit`, `duckdbThreads`, `duckdbTempDirectory`, `duckdbMaxTempSize`로 자원 사용을 제한할 수 있습니다. 임시 폴더는 안전을 위해 workspace 내부 경로만 허용됩니다. `maxCellBytes`를 넘는 LIST·STRUCT·bytes 셀은 잘림 표시와 원본 크기 메타데이터를 보여 줍니다.
+`data`는 선택한 원본을 가리키는 읽기 전용 뷰입니다. `DESCRIBE SELECT * FROM data`로 칼럼과 타입을 확인할 수 있습니다. 상단의 원본 행 수는 SQL 필터 적용 전 수치이며, 정확한 SQL 결과 행 수 계산은 별도 설정입니다.
 
-## 동작 범위
+## SQL 즐겨찾기
 
-- 선택한 파일이 속한 VS Code workspace 안의 Parquet만 열 수 있습니다. workspace 밖에서 파일을 고르면 그 파일의 상위 폴더가 허용 범위가 됩니다.
-- 각 Explorer 탭은 독립 Python 작업자를 실행하며, 탭을 닫으면 작업자를 종료합니다. 파일 경로와 SQL 결과는 로컬 프로세스 간에만 전달됩니다.
-- SQL은 포함된 visualize Parquet 엔진의 읽기 전용 검증을 거칩니다. 기본 경로는 요청한 페이지보다 한 행만 더 읽어 다음 페이지 여부를 판단하며 전체 `COUNT(*)`는 실행하지 않습니다.
-- `DESCRIBE SELECT * FROM data`로 조회 결과의 칼럼 이름과 타입을 표에서 확인할 수 있습니다.
-- 조회 화면은 기본 표·SQL 입력·검사·페이지 이동을 제공합니다. Python과 DuckDB는 기존 설치를 사용하거나 환경 설정 화면에서 준비합니다.
-- 현재 페이지에서 고유값 수가 표시된 행 수보다 작은 칼럼은 셀 배경을 색칠합니다. 리스트 값도 비교하며, 값별 색은 같은 SQL의 페이지 이동 중 유지합니다. 처음 등장한 값에는 보색에 가까운 색을 우선 배정하고, 값이 많아지면 연속 색상 차이가 큰 팔레트를 사용합니다. 이 판별은 전체 데이터가 아닌 표시된 페이지 기준입니다.
-- 결과 표의 행 수는 25·50·100·200, 칼럼 수는 5·10·20·40·100 중에서 선택할 수 있습니다. 기본값은 각각 50행과 20칼럼이며, 칼럼 좌우 이동 폭은 선택한 칼럼 수를 따릅니다.
-- SQL 편집기는 로컬 번들의 CodeMirror로 SQL 구문을 강조하고, DuckDB 검사 오류를 밑줄로 표시합니다. VS Code의 SQL 언어 서버 전체 기능을 복제하지는 않습니다.
-- 작업자는 신뢰된 로컬 workspace에서만 실행됩니다.
+**SQL 저장**에서 별칭과 설명을 입력하고 **즐겨찾기**에서 다시 불러옵니다. 별표로 항목을 고정하고 실행 횟수·최근 사용·최근 수정·별칭 순으로 정렬할 수 있습니다. 최대 100개를 저장합니다.
 
-## 개발 확인
+즐겨찾기는 확장 전역 저장소에 저장됩니다. 즐겨찾기 창의 백업 폴더 경로 복사 버튼으로 위치를 확인할 수 있습니다. Remote SSH·WSL에서는 확장이 실행되는 원격 환경에 저장됩니다.
 
-```bash
-npm run check
-npm run build
-```
+## 설정
 
-`npm test`로 JavaScript와 Python 회귀 테스트를 실행할 수 있습니다. VS Code에서 이 폴더를 열고 `npm run build`로 로컬 SQL 편집기 번들을 만든 뒤 `F5`로 확장 개발 호스트를 실행할 수 있습니다. 번들은 설치 시 외부 네트워크를 사용하지 않습니다.
+| 설정 | 기본값 | 설명 |
+| --- | --- | --- |
+| `pqExplorer.queryTimeoutSeconds` | `30` | 조회 제한 시간(초). `0`이면 제한 없음 |
+| `pqExplorer.exactResultCount` | `false` | SQL 결과 전체 행 수를 추가 계산 |
+| `pqExplorer.duckdbMemoryLimit` | `2GB` | DuckDB 메모리 제한 |
+| `pqExplorer.duckdbThreads` | `2` | DuckDB 스레드 수 |
+| `pqExplorer.duckdbTempDirectory` | 빈 값 | workspace 내부 임시 폴더 |
+| `pqExplorer.duckdbMaxTempSize` | `10GB` | 임시 디스크 사용 제한 |
+| `pqExplorer.maxCellBytes` | `65536` | 중첩 값·BLOB 셀의 전송 상한 |
 
-개발 테스트에 DuckDB가 필요하면 이 폴더에서 `python3 -m venv .venv`와 `.venv/bin/python -m pip install "duckdb>=1.4,<2"`를 실행하세요. 전체 테스트는 `SMOKING_TEST_PYTHON="$PWD/.venv/bin/python" npm test`로 실행할 수 있습니다. `.venv/`는 Git과 VSIX 패키지에서 제외됩니다.
+안전 정수 범위를 벗어난 정수와 DECIMAL은 정밀도를 보존하기 위해 문자열로 표시합니다.
 
-다른 확장이 `.parquet`의 기본 편집기로 선택되었다면 파일 탭에서 **Reopen Editor With...** → **PQ Explorer**를 선택하세요.
+## 지원 환경과 데이터 처리
 
-설치 파일이 필요하면 `npm install` 후 `npm run package`를 실행합니다. 생성되는 `dist/pq-explorer-0.1.8.vsix`를 VS Code의 **Extensions: Install from VSIX**에서 설치할 수 있습니다. 이전 화면으로 돌아가려면 `dist/pq-explorer-0.1.7.vsix`를 다시 설치하세요. 이전 버전의 VSIX도 `dist/`에 보관합니다.
+Windows x64와 Linux x64의 VS Code 1.90 이상을 대상으로 합니다. Remote SSH·WSL에서는 workspace가 있는 환경에서 실행됩니다. macOS·ARM과 브라우저 전용 VS Code용 패키지는 이번 배포에 포함하지 않습니다. Windows 네이티브 패키지 구성은 검사했으나 Windows VS Code에서의 직접 실행 검증은 아직 완료하지 않았습니다.
 
-GitHub Release에 첨부된 VSIX도 다운로드한 뒤 VS Code에서 `Ctrl+Shift+P` → **Extensions: Install from VSIX...**로 설치할 수 있습니다. VSIX 설치는 자동 업데이트되지 않으므로 새 버전은 다시 설치해야 합니다.
+신뢰된 workspace에서만 실행하며, 선택한 소스 범위의 파일과 단일 읽기 전용 SQL을 허용합니다. 파일 내용·SQL·조회 결과를 외부로 전송하는 기능이나 텔레메트리는 포함하지 않습니다. DuckDB 제한은 별도 운영체제 샌드박스가 아니며, 신뢰할 수 없는 파일에 대한 완전한 격리를 제공하지 않습니다.
 
-## Tailnet 다운로드
+## 문의
 
-Tailnet에 연결한 뒤 [VSIX 다운로드 페이지](http://smoke-sv.tailf3a251.ts.net:8787/)에서 최신 파일을 받습니다. 페이지에는 버전, 설치 순서와 SHA-256이 표시됩니다. Windows VS Code에서의 직접 동작 검증 여부도 페이지에서 확인할 수 있습니다.
+오류를 제보할 때는 운영체제·VS Code 버전·확장 버전과 재현 가능한 최소 SQL을 포함해 주세요. 데이터 파일이나 계정 정보 없이 재현할 수 있는 예제를 권장합니다.
 
-```bash
-npm run package
-python scripts/prepare_downloads.py
-```
+## 라이선스
 
-다운로드 파일과 페이지는 `dist/downloads/`에 생성됩니다. 같은 버전의 파일이 이미 배포 폴더에 있는데 체크섬이 다르면 덮어쓰지 않습니다. 새 소스를 배포할 때는 버전을 올리고 다시 패키징하세요. [다운로드 서비스 정의](deployment/pq-explorer-downloads.service)는 이 서버의 Tailnet IP `100.109.190.96:8787`에만 바인딩하여 배포 폴더를 HTTP로 제공합니다. 기존 Tailscale Serve 설정과 분리되어 있습니다.
+MIT License.

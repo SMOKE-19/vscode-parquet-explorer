@@ -6,9 +6,8 @@ deployment/**
 scripts/**
 README.md
 dist/**
-node_modules/**
 .venv/**
 *.vsix
 .gitignore
-python/__pycache__/**
+python/**
 media/sql-editor.source.mjs

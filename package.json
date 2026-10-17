@@ -2,13 +2,13 @@
   "name": "pq-explorer",
   "displayName": "PQ Explorer",
   "description": "Read-only DuckDB Parquet Explorer for VS Code.",
-  "version": "0.1.8",
+  "version": "0.1.11",
   "publisher": "smoke-19",
   "repository": {
     "type": "git",
     "url": "https://github.com/SMOKE-19/vscode-parquet-explorer.git"
   },
-  "license": "SEE LICENSE IN LICENSE",
+  "license": "MIT",
   "engines": {
     "vscode": "^1.90.0"
   },
@@ -36,7 +36,9 @@
     "@lezer/highlight": "^1.2.3",
     "@vscode/vsce": "4.0.0",
     "codemirror": "^6.0.2",
-    "esbuild": "^0.28.2"
+    "esbuild": "^0.28.2",
+    "yauzl": "3.4.0",
+    "yazl": "2.5.1"
   },
   "activationEvents": [
     "onCommand:pqExplorer.openParquetExplorer",
@@ -73,11 +75,6 @@
     "configuration": {
       "title": "PQ Explorer",
       "properties": {
-        "pqExplorer.pythonPath": {
-          "type": "string",
-          "default": "",
-          "description": "duckdb가 설치된 Python 실행 파일. 비워두면 workspace 가상환경과 PATH의 Python을 사용하며, 준비된 PQ Explorer 전용 환경도 재사용합니다."
-        },
         "pqExplorer.queryTimeoutSeconds": {
           "type": "number",
           "default": 30,
@@ -125,10 +122,27 @@
     }
   },
   "scripts": {
-    "check": "node --check extension.js && node --check favorites.js && node --check bridge.js && node --check runtime.js && node --check media/explorer.js && node --check media/sql-editor.source.mjs",
+    "check": "node --check extension.js && node --check favorites.js && node --check bridge.js && node --check engine/parquet.js && node --check engine/worker.js && node --check engine/values.js && node --check engine/sql.js && node --check media/explorer.js && node --check media/sql-editor.source.mjs && node --check scripts/package_vsix.js && node --check scripts/benchmark.js && node --check scripts/marketplace_assets.js && node --check scripts/audit_vsix.js",
     "build": "esbuild media/sql-editor.source.mjs --bundle --format=iife --platform=browser --target=es2022 --minify --outfile=media/sql-editor.js",
     "vscode:prepublish": "npm run build",
-    "test": "npm run build && node --test tests/*.test.js && python -m unittest discover -s tests",
-    "package": "vsce package --out dist/pq-explorer-0.1.8.vsix"
+    "test": "npm run build && node --test tests/*.test.js",
+    "package": "node scripts/package_vsix.js",
+    "benchmark": "node scripts/benchmark.js"
+  },
+  "dependencies": {
+    "@duckdb/node-api": "1.5.6-r.1"
+  },
+  "icon": "assets/icon.png",
+  "keywords": [
+    "parquet",
+    "duckdb",
+    "sql",
+    "data",
+    "viewer",
+    "dataset"
+  ],
+  "galleryBanner": {
+    "color": "#093b2b",
+    "theme": "dark"
   }
 }

@@ -3,4 +3,4 @@ node_modules/
 dist/
 *.vsix
 __pycache__/
-tests/.tmp/
+tests/
