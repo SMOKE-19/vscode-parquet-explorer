@@ -10,7 +10,11 @@ npm run check
 npm run build
 ```
 
-테스트 스위트는 로컬 `tests/`에 보관하며 공개 저장소에는 포함하지 않습니다. 테스트 파일이 있는 개발 환경에서는 `npm test`로 SQL 편집기 번들 생성 후 실제 Node DuckDB·Worker·즐겨찾기·확장 호스트 계약을 확인합니다. Chromium이 없으면 Webview 브라우저 테스트를 건너뛰며 테스트 출력에 표시합니다. VS Code에서 `F5`로 확장 개발 호스트를 실행할 수 있습니다.
+직접 작성한 실행 코드의 원본은 `src/`의 TypeScript입니다. `src/extension.ts`, `src/bridge.ts`, `src/favorites.ts`, `src/engine/`, `src/media/`, `src/scripts/`를 수정합니다. 공통 요청·응답 타입은 `src/shared/protocol.ts`에 있습니다.
+
+`npm run check`는 Node·VS Code 코드와 DOM 코드를 각각 `strict` 모드로 검사하고 파일을 생성하지 않습니다. `npm run build`는 타입 검사 후 esbuild로 CJS·브라우저 번들을 생성합니다. `extension.js`, `engine/*.js`, `media/*.js`, `scripts/*.js`, `shared/errors.js` 등은 생성물이므로 직접 수정하거나 Git에 추가하지 않습니다. 새 checkout에서는 JavaScript 실행 파일이 없으므로 확장 개발 호스트를 실행하기 전에 빌드해야 합니다. VSIX 내부 진입점과 Worker·Webview 경로는 기존과 같습니다.
+
+테스트 스위트는 로컬 `tests/`에 보관하며 공개 저장소에는 포함하지 않습니다. 테스트 파일이 있는 개발 환경에서는 `npm test`로 빌드 후 실제 Node DuckDB·Worker·즐겨찾기·확장 호스트 계약을 확인합니다. Chromium이 없으면 Webview 브라우저 테스트를 건너뛰며 테스트 출력에 표시합니다. TypeScript 전환의 단계와 검증 범위는 [구현 계획](docs/implementation/typescript-migration.md)과 [순차 구현 기록](docs/implementation/typescript-migration-steps.md)을 참고하세요.
 
 ## 플랫폼별 VSIX
 
@@ -22,7 +26,7 @@ npm run package -- --target win32-x64
 
 `npm run package`의 기본 target은 빌드 머신입니다. `linux-x64`, `linux-arm64`, `alpine-x64`, `alpine-arm64`, `win32-x64`, `win32-arm64`, `darwin-x64`, `darwin-arm64`를 지원하는 빌드 경로를 제공합니다. 모든 target에서의 실제 실행을 검증했다는 뜻은 아닙니다.
 
-결과는 `dist/pq-explorer-<version>-<target>.vsix`입니다. 임시 디렉터리에 현재 소스와 lockfile을 복사하고 `npm ci --omit=dev --ignore-scripts`로 target 의존성을 설치한 뒤 기존 vsce로 패키징합니다. Node DuckDB의 JavaScript 코드와 `.node`·`.so`·`.dll`·`.dylib` 등 해당 플랫폼 파일을 동봉합니다. target 파일이 빠지면 패키징을 실패시킵니다. 빌드 시 npm registry 접근이 필요할 수 있으며 사용자 실행 시 추가 다운로드는 없습니다.
+결과는 `dist/pq-explorer-<version>-<target>.vsix`입니다. 타입 검사·빌드 후 임시 디렉터리에 생성된 실행 파일과 lockfile을 복사하고 `npm ci --omit=dev --ignore-scripts`로 target 의존성을 설치한 뒤 기존 vsce로 패키징합니다. TypeScript 원본·타입 패키지·설정·개발 스크립트는 포함하지 않습니다. Node DuckDB의 JavaScript 코드와 `.node`·`.so`·`.dll`·`.dylib` 등 해당 플랫폼 파일을 동봉합니다. target 파일이 빠지면 패키징을 실패시킵니다. 빌드 시 npm registry 접근이 필요할 수 있으며 사용자 실행 시 추가 다운로드는 없습니다.
 
 VSIX manifest에 target을 기록하므로 Windows 로컬용과 Linux WSL·SSH용 패키지를 구분하세요. 같은 Windows PC에서도 WSL workspace에서 실행할 확장은 Linux 패키지입니다. 기존 `dist/downloads/`나 서비스에는 자동 복사하지 않습니다.
 
@@ -73,4 +77,4 @@ WSL은 Linux workspace 확장 호스트에서 실행되므로 Linux 패키지가
 
 ## 파일 형식 확장 검증
 
-0.1.12에서 CSV·TSV·SBDF·XLSX를 추가했습니다. 형식별 동작·참고 구현과 검증 범위는 [파일 형식 구현 기록](docs/implementation/multi-format.md)을 참고하세요. `npm run build`는 SQL 편집기와 XLSX reader 번들을 생성합니다. XLSX 원본 모듈과 개발 의존성은 VSIX에 넣지 않으며 yauzl·pend는 ZIP 사전 검사용 런타임 의존성으로 동봉합니다.
+0.1.12에서 CSV·TSV·SBDF·XLSX를 추가했습니다. 형식별 동작·참고 구현과 검증 범위는 [파일 형식 구현 기록](docs/implementation/multi-format.md)을 참고하세요. SQL 편집기와 XLSX reader의 현재 원본은 각각 `src/media/sql-editor.ts`, `src/engine/xlsx-reader.ts`입니다. 이 원본과 개발 의존성은 VSIX에 넣지 않으며 yauzl·pend는 ZIP 사전 검사용 런타임 의존성으로 동봉합니다.

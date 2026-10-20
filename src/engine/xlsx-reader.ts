@@ -1,16 +1,22 @@
 import readUniversalWorkbook from "read-excel-file/universal";
 import { Parser } from "saxen";
 
+export type WorkbookCell = string | number | boolean | Date | null;
+export interface WorkbookSheet { sheet: string; data: WorkbookCell[][] }
+export interface WorkbookOptions { trim?: boolean; sheets: string[]; parseNumber(raw: string): number | string }
+
 // The universal reader uses ArrayBuffer and avoids optional Node ESM loaders
 // and another worker implementation inside our existing extension Worker.
-export function readWorkbook(buffer, options) {
-  return readUniversalWorkbook(buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength), options);
+export function readWorkbook(buffer: Buffer, options: WorkbookOptions) {
+  // Upstream's declarations currently use DateConstructor for date cells and
+  // omit the runtime-supported sheets option. Keep the correction in this adapter.
+  return readUniversalWorkbook(buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength) as ArrayBuffer, options) as unknown as Promise<WorkbookSheet[]>;
 }
 
-export function inspectXml(xml) {
+export function inspectXml(xml: string) {
   let maxRow = 0, maxColumn = 0;
   let rowElements = 0, cellElements = 0;
-  const sheets = [];
+  const sheets: string[] = [];
   const parser = new Parser();
   parser.on("error", error => { throw error; });
   parser.on("warn", error => { throw error; });

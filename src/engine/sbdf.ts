@@ -1,18 +1,28 @@
-"use strict";
-
+import type { DuckDBValue } from "@duckdb/node-api";
+import type { Column } from "../shared/protocol";
+export type ImportValue = DuckDBValue | Uint8Array;
+export interface SbdfColumn extends Column { sbdfType: number }
+export interface SbdfHeader { columns: SbdfColumn[] }
+export interface SbdfBatch { batch: ImportValue[][]; rows: number }
 // SBDF 1.0 wire format, checked against Spotfire's public C implementation
 // and smoking-sbdf's plain/RLE/bit writer. No Python or native addon is used.
-const fs = require("node:fs");
-const { setImmediate: yieldEventLoop } = require("node:timers/promises");
-const { timestampMillisValue, dateValue, timeValue, intervalValue } = require("@duckdb/node-api");
-const TYPES = { 1: "BOOLEAN", 2: "INTEGER", 3: "BIGINT", 4: "FLOAT", 5: "DOUBLE", 6: "TIMESTAMP_MS", 7: "DATE", 8: "TIME", 9: "INTERVAL", 10: "VARCHAR", 12: "BLOB", 13: "VARCHAR" };
-const WIDTHS = { 1: 1, 2: 4, 3: 8, 4: 4, 5: 8, 6: 8, 7: 8, 8: 8, 9: 8, 13: 16 };
+import * as fs from "node:fs";
+import { setImmediate as yieldEventLoop } from "node:timers/promises";
+import { timestampMillisValue, dateValue, timeValue, intervalValue } from "@duckdb/node-api";
+const TYPES: Record<number, string> = { 1: "BOOLEAN", 2: "INTEGER", 3: "BIGINT", 4: "FLOAT", 5: "DOUBLE", 6: "TIMESTAMP_MS", 7: "DATE", 8: "TIME", 9: "INTERVAL", 10: "VARCHAR", 12: "BLOB", 13: "VARCHAR" };
+const WIDTHS: Record<number, number> = { 1: 1, 2: 4, 3: 8, 4: 4, 5: 8, 6: 8, 7: 8, 8: 8, 9: 8, 13: 16 };
 const EPOCH = 62135596800000n;
 
 class Reader {
-  constructor(file) { this.fd = fs.openSync(file, "r"); this.size = fs.fstatSync(this.fd).size; this.position = 0; this.buffer = Buffer.alloc(0); this.start = 0; }
-  fail(message) { throw new Error(`SBDF: ${message} (offset ${this.position})`); }
-  bytes(length) {
+  fd: number;
+  size: number;
+  position: number;
+  buffer: Buffer;
+  start: number;
+  sliceLimit?: number;
+  constructor(file: string) { this.fd = fs.openSync(file, "r"); this.size = fs.fstatSync(this.fd).size; this.position = 0; this.buffer = Buffer.alloc(0); this.start = 0; }
+  fail(message: string): never { throw new Error(`SBDF: ${message} (offset ${this.position})`); }
+  bytes(length: number) {
     if (!Number.isSafeInteger(length) || length < 0 || length > 64 * 1024 ** 2 || this.position + length > this.size || this.position + length > (this.sliceLimit ?? Infinity)) this.fail("잘못된 길이, 잘린 파일 또는 slice 크기 제한 초과입니다");
     if (this.position < this.start || this.position + length > this.start + this.buffer.length) {
       this.start = this.position;
@@ -28,9 +38,9 @@ class Reader {
   int() { return this.bytes(4).readInt32LE(); }
   count(max = 1000000) { const n = this.int(); if (n < 0 || n > max) this.fail("항목 수 제한을 초과했습니다"); return n; }
   string() { return this.bytes(this.count(16 * 1024 ** 2)).toString("utf8"); }
-  section(expected) { if (this.byte() !== 0xdf || this.byte() !== 0x5b) this.fail("section magic이 다릅니다"); const id = this.byte(); if (expected != null && id !== expected) this.fail("section 순서가 다릅니다"); return id; }
-  packed() { let n = 0; for (let i = 0; i < 5; i++) { const v = this.byte(); n += (v & 127) * 2 ** (i * 7); if (!(v & 128)) return n; } this.fail("잘못된 packed 길이입니다"); }
-  scalar(type, packed = false) {
+  section(expected?: number) { if (this.byte() !== 0xdf || this.byte() !== 0x5b) this.fail("section magic이 다릅니다"); const id = this.byte(); if (expected != null && id !== expected) this.fail("section 순서가 다릅니다"); return id; }
+  packed(): number { let n = 0; for (let i = 0; i < 5; i++) { const v = this.byte(); n += (v & 127) * 2 ** (i * 7); if (!(v & 128)) return n; } this.fail("잘못된 packed 길이입니다"); }
+  scalar(type: number, packed = false): ImportValue {
     if (type === 10 || type === 12) { const b = this.bytes(packed ? this.packed() : this.count(64 * 1024 ** 2)); return type === 10 ? b.toString("utf8") : b; }
     const width = WIDTHS[type]; if (!width) this.fail(`지원하지 않는 타입 ${type}`);
     const b = this.bytes(width);
@@ -46,7 +56,7 @@ class Reader {
     if (type === 9) return intervalValue(0, 0, n * 1000n);
     return n;
   }
-  array(type) {
+  array(type: number) {
     const count = this.count();
     const end = type === 10 || type === 12 ? this.position + 4 + this.count(64 * 1024 ** 2) : null;
     const values = Array.from({ length: count }, () => this.scalar(type, true));
@@ -64,7 +74,7 @@ class Reader {
       return { type, values: Array.from({ length: count }, (_, i) => Boolean(b[i >> 3] & (128 >> (i & 7)))) };
     }
     if (encoding !== 2) this.fail(`지원하지 않는 인코딩 ${encoding}`);
-    const runs = this.bytes(this.count()), values = this.array(type), expanded = [];
+    const runs = this.bytes(this.count()), values = this.array(type), expanded: ImportValue[] = [];
     if (runs.length !== values.length) this.fail("RLE run 수가 다릅니다");
     for (let i = 0; i < runs.length; i++) {
       if (expanded.length + runs[i] + 1 > count) this.fail("RLE 행 수가 다릅니다");
@@ -75,7 +85,7 @@ class Reader {
   }
 }
 
-function decimal(b) {
+function decimal(b: Buffer) {
   const n = b.readBigUInt64LE(0) | b.readBigUInt64LE(8) << 64n;
   const sign = n >> 127n ? "-" : "", special = Number(n >> 122n & 31n);
   if (special === 31) return "NaN";
@@ -90,7 +100,7 @@ function decimal(b) {
   return `${sign}${digits}e${exponent}`;
 }
 
-async function* readSbdf(file) {
+async function* readSbdf(file: string): AsyncGenerator<SbdfHeader | SbdfBatch, void, unknown> {
   const r = new Reader(file);
   try {
     r.section(1); if (r.byte() !== 1 || r.byte() !== 0) r.fail("SBDF 1.0 파일만 지원합니다");
@@ -99,12 +109,12 @@ async function* readSbdf(file) {
     const count = r.count(10000), definitions = [];
     if (!count) r.fail("칼럼이 없습니다");
     for (let i = r.count(10000); i; i--) { const name = r.string(), type = r.byte(); definitions.push({ name, type, fallback: r.byte() ? r.scalar(type) : undefined }); }
-    const columns = [];
+    const columns: SbdfColumn[] = [];
     for (let i = 0; i < count; i++) {
-      const metadata = new Map();
+      const metadata = new Map<string, ImportValue | undefined>();
       for (const d of definitions) metadata.set(d.name, r.byte() ? r.scalar(d.type) : d.fallback);
       const name = metadata.get("Name"), type = metadata.get("DataType");
-      if (typeof name !== "string" || !Buffer.isBuffer(type) || type.length !== 1 || !TYPES[type[0]]) r.fail("칼럼 Name/DataType이 유효하지 않습니다");
+      if (typeof name !== "string" || !Buffer.isBuffer(type) || type.length !== 1 || !TYPES[type[0]]) return r.fail("칼럼 Name/DataType이 유효하지 않습니다");
       columns.push({ name, type: TYPES[type[0]], sbdfType: type[0] });
     }
     yield { columns };
@@ -118,7 +128,7 @@ async function* readSbdf(file) {
       if (id !== 3 || r.count(10000) !== count) r.fail("table slice 칼럼 수가 다릅니다");
       const batch = [], start = r.position;
       r.sliceLimit = start + 128 * 1024 ** 2;
-      let rows;
+      let rows: number | undefined;
       for (let c = 0; c < count; c++) {
         r.section(4); const data = r.values();
         rows ??= data.values.length;
@@ -134,11 +144,11 @@ async function* readSbdf(file) {
         batch.push(data.values);
         if (r.position - start > 128 * 1024 ** 2) r.fail("slice 바이트 제한을 초과했습니다");
       }
-      yield { batch, rows };
+      yield { batch, rows: rows! };
       r.sliceLimit = undefined;
       await yieldEventLoop();
     }
   } finally { fs.closeSync(r.fd); }
 }
 
-module.exports = { readSbdf };
+export { readSbdf };

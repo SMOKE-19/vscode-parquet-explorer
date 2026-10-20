@@ -1,0 +1,20 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "lib": [
+      "ES2023"
+    ],
+    "types": [
+      "node",
+      "vscode"
+    ]
+  },
+  "include": [
+    "src/extension.ts",
+    "src/bridge.ts",
+    "src/favorites.ts",
+    "src/engine/**/*.ts",
+    "src/scripts/**/*.ts",
+    "src/shared/**/*.ts"
+  ]
+}

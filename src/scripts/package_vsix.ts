@@ -1,15 +1,14 @@
-"use strict";
+import { errorMessage } from "../shared/errors";
+import * as fs from "node:fs/promises";
+import * as os from "node:os";
+import * as path from "node:path";
+import { spawnSync } from "node:child_process";
+import { createVSIX } from "@vscode/vsce";
+import { familySync, MUSL } from "detect-libc";
+import { screenshotUrl, registerScreenshot } from "./marketplace_assets";
+import { auditVsix } from "./audit_vsix";
 
-const fs = require("node:fs/promises");
-const os = require("node:os");
-const path = require("node:path");
-const { spawnSync } = require("node:child_process");
-const { createVSIX } = require("@vscode/vsce");
-const { familySync, MUSL } = require("detect-libc");
-const { screenshotUrl, registerScreenshot } = require("./marketplace_assets");
-const { auditVsix } = require("./audit_vsix");
-
-const targets = {
+const targets: Record<string, [string, string, string?]> = {
   "linux-x64": ["linux", "x64", "glibc"], "linux-arm64": ["linux", "arm64", "glibc"],
   "alpine-x64": ["linux", "x64", "musl"], "alpine-arm64": ["linux", "arm64", "musl"],
   "win32-x64": ["win32", "x64"], "win32-arm64": ["win32", "arm64"],
@@ -20,7 +19,7 @@ const args = process.argv.slice(2);
 if (args.includes("--help")) {
   console.log(`Usage: npm run package -- [--target TARGET]\nDefault: ${host}\nTargets: ${Object.keys(targets).join(", ")}\nBuilds a local VSIX with native dependencies; does not publish or install it.`);
 } else {
-  main().catch(error => { console.error(error.message); process.exitCode = 1; });
+  main().catch(error => { console.error(errorMessage(error)); process.exitCode = 1; });
 }
 
 async function main() {
@@ -32,14 +31,13 @@ async function main() {
   const artifact = path.join(root, "dist", `${manifest.name}-${manifest.version}-${target}.vsix`);
   const stage = await fs.mkdtemp(path.join(os.tmpdir(), "pq-vsix-"));
   const npm = process.platform === "win32" ? "npm.cmd" : "npm";
-  function run(args, cwd) {
+  function run(args: string[], cwd: string) {
     const result = spawnSync(npm, args, { cwd, stdio: "inherit", shell: process.platform === "win32" });
     if (result.status !== 0) throw new Error(`npm ${args[0]} 실패: ${result.error?.message || result.status}`);
   }
   try {
-    run(["run", "build"], root);
     await fs.mkdir(path.dirname(artifact), { recursive: true });
-    for (const file of ["extension.js", "bridge.js", "favorites.js", "engine", "media", "assets", "LICENSE", "README.md", "CHANGELOG.md", "PRIVACY.md", "SECURITY.md", "THIRD_PARTY_NOTICES.md", "package-lock.json"]) {
+    for (const file of ["extension.js", "bridge.js", "favorites.js", "shared", "engine", "media", "assets", "LICENSE", "README.md", "CHANGELOG.md", "PRIVACY.md", "SECURITY.md", "THIRD_PARTY_NOTICES.md", "package-lock.json"]) {
       await fs.cp(path.join(root, file), path.join(stage, file), { recursive: true });
     }
     const packaged = { ...manifest };
@@ -55,8 +53,6 @@ async function main() {
     await fs.access(path.join(stage, "node_modules", binding, "duckdb.node"));
     await fs.rm(path.join(stage, "package-lock.json"));
     await fs.rm(path.join(stage, "node_modules", ".package-lock.json"), { force: true });
-    await fs.rm(path.join(stage, "media", "sql-editor.source.mjs"));
-    await fs.rm(path.join(stage, "engine", "xlsx-reader.source.mjs"));
     await fs.writeFile(path.join(stage, ".vscodeignore"), "**/*.d.ts\n**/*.js.map\n");
     await createVSIX({ cwd: stage, packagePath: artifact, target, dependencies: true, useYarn: false });
     await registerScreenshot(artifact);

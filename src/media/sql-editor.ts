@@ -1,3 +1,7 @@
+import type { EditorState } from "@codemirror/state";
+import type { Diagnostic } from "@codemirror/lint";
+import type { LintResult } from "../shared/protocol";
+import type {} from "./editor-types";
 import { basicSetup, EditorView } from "codemirror";
 import { sql, PostgreSQL } from "@codemirror/lang-sql";
 import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
@@ -5,7 +9,7 @@ import { linter, lintGutter, setDiagnostics } from "@codemirror/lint";
 import { tags } from "@lezer/highlight";
 import { keymap } from "@codemirror/view";
 
-const styleNonce = document.currentScript?.nonce || "";
+const styleNonce = (document.currentScript as HTMLScriptElement | null)?.nonce || "";
 
 const colors = HighlightStyle.define([
   { tag: [tags.keyword, tags.controlKeyword], color: "var(--pq-sql-keyword)", fontWeight: "600" },
@@ -32,7 +36,7 @@ const theme = EditorView.theme({
   },
 });
 
-function diagnosticsFor(state, result) {
+function diagnosticsFor(state: EditorState, result: LintResult): Diagnostic[] {
   if (result.ok) return [];
   const position = result.position;
   if (!position || state.doc.length === 0) {

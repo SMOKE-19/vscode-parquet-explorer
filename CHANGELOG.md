@@ -1,5 +1,11 @@
 # 변경 이력
 
+## 0.1.13 — 2026-10-20
+
+- 확장 호스트·데이터 엔진·Worker·Webview·개발 스크립트의 원본을 TypeScript로 전환.
+- 요청·응답 공통 타입과 Node/DOM 엄격 타입 검사, 검사 후 JavaScript 생성 빌드 추가.
+- 기존 파일 형식·SQL·즐겨찾기·VSIX 실행 경로 유지.
+
 ## 0.1.12
 
 - CSV·TSV·SBDF·XLSX 파일 열기와 공통 DuckDB SQL 조회 추가.

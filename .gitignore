@@ -4,3 +4,13 @@ dist/
 *.vsix
 __pycache__/
 tests/
+
+# TypeScript is the source of truth; npm run build recreates these runtime files.
+/extension.js
+/bridge.js
+/favorites.js
+/engine/*.js
+/media/*.js
+/scripts/*.js
+/shared/
+*.tsbuildinfo

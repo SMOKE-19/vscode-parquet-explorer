@@ -1,12 +1,10 @@
-"use strict";
-
-const os = require("node:os");
-const yauzl = require("yauzl");
+import * as os from "node:os";
+import * as yauzl from "yauzl";
 
 const roots = new Set(["extension.js", "bridge.js", "favorites.js", "package.json", "readme.md", "changelog.md", "license.txt", "privacy.md", "security.md", "third_party_notices.md"]);
-const owned = /^(?:engine\/(?:parquet|sql|values|worker|formats|sbdf|xlsx-reader)\.js|media\/(?:explorer\.(?:js|html|css)|sql-editor\.js)|assets\/(?:icon|explorer)\.png)$/;
+const owned = /^(?:shared\/errors\.js|engine\/(?:parquet|sql|values|worker|formats|sbdf|xlsx-reader)\.js|media\/(?:explorer\.(?:js|html|css)|sql-editor\.js)|assets\/(?:icon|explorer)\.png)$/;
 const vendor = /^node_modules\/(?:@duckdb\/(?:node-api|node-bindings|node-bindings-(?:linux|win32|darwin)-(?:x64|arm64)(?:-musl)?)|detect-libc|yauzl|pend)\//;
-const patterns = [
+const patterns: [string, RegExp][] = [
   ["private key", /-----BEGIN (?:[A-Z]+ )?PRIVATE KEY-----/],
   ["GitHub credential", /(?:gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{30,})/],
   ["embedded publishing credential", /(?:VSCE_PAT|AZURE_CLIENT_SECRET)\s*[:=]\s*["'][^"'\r\n]{12,}["']/i],
@@ -14,13 +12,13 @@ const patterns = [
   ["private overlay hostname", /\b(?:[a-z0-9-]+\.)*tail[a-z0-9]+\.ts\.net\b/i],
 ];
 
-async function auditVsix(artifact) {
-  const archive = await new Promise((resolve, reject) => yauzl.open(artifact, { lazyEntries: true }, (error, zip) => error ? reject(error) : resolve(zip)));
+async function auditVsix(artifact: string) {
+  const archive = await new Promise<yauzl.ZipFile>((resolve, reject) => yauzl.open(artifact, { lazyEntries: true }, (error, zip) => error ? reject(error) : resolve(zip!)));
   const summary = { files: 0, owned_files: 0, vendor_files: 0 };
   try {
-    await new Promise((resolve, reject) => {
+    await new Promise<void>((resolve, reject) => {
       archive.on("error", reject);
-      archive.on("entry", entry => {
+      archive.on("entry", (entry: yauzl.Entry) => {
         const file = entry.fileName;
         if (file.endsWith("/")) { archive.readEntry(); return; }
         if (file === "extension.vsixmanifest" || file === "[Content_Types].xml") { archive.readEntry(); return; }
@@ -35,7 +33,7 @@ async function auditVsix(artifact) {
         if (entry.uncompressedSize > 8 * 1024 * 1024) { reject(new Error(`Unexpected public file size: ${file}`)); return; }
         archive.openReadStream(entry, (error, stream) => {
           if (error) { reject(error); return; }
-          const chunks = [];
+          const chunks: Buffer[] = [];
           stream.on("error", reject);
           stream.on("data", chunk => chunks.push(chunk));
           stream.on("end", () => {
@@ -66,4 +64,4 @@ async function auditVsix(artifact) {
   } finally { archive.close(); }
 }
 
-module.exports = { auditVsix };
+export { auditVsix };

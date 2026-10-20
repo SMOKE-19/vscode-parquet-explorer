@@ -1,8 +1,9 @@
-"use strict";
-const fs = require("node:fs");
-const path = require("node:path");
-const { performance } = require("node:perf_hooks");
-const { startBridge } = require("../bridge");
+import { version as duckdbVersion } from "@duckdb/node-api";
+import { errorMessage } from "../shared/errors";
+import * as fs from "node:fs";
+import * as path from "node:path";
+import { performance } from "node:perf_hooks";
+import { startBridge } from "../bridge";
 
 async function main() {
   const input = process.argv[2];
@@ -18,17 +19,17 @@ async function main() {
   try {
     const startup = performance.now() - started;
     const metadata = await bridge.request("meta");
-    const runs = [];
+    const runs: { run: number; engine_ms: number; bridge_ms: number; rows: number; columns: number }[] = [];
     for (let i = 0; i < 3; i++) {
       const start = performance.now();
       const result = await bridge.request("query", { sql: "SELECT * FROM data", page_size: 50, column_limit: 20 });
       runs.push({ run: i + 1, engine_ms: result.elapsed_ms, bridge_ms: performance.now() - start,
         rows: result.rows.length, columns: result.columns.length });
     }
-    const median = key => [...runs].map(run => run[key]).sort((a, b) => a - b)[1];
+    const median = (key: "engine_ms" | "bridge_ms") => [...runs].map(run => run[key]).sort((a, b) => a - b)[1];
     console.log(JSON.stringify({ node: process.version, platform: `${process.platform}/${process.arch}`,
-      duckdb: require("@duckdb/node-api").version(), file: path.basename(source), bytes: metadata.file_bytes,
+      duckdb: duckdbVersion(), file: path.basename(source), bytes: metadata.file_bytes,
       startup_ms: startup, median_engine_ms: median("engine_ms"), median_bridge_ms: median("bridge_ms"), runs }, null, 2));
   } finally { await bridge.stop(); }
 }
-main().catch(error => { console.error(error.message); process.exitCode = 1; });
+main().catch(error => { console.error(errorMessage(error)); process.exitCode = 1; });

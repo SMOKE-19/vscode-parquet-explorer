@@ -1,21 +1,21 @@
-"use strict";
-
-const fs = require("node:fs");
-const fsp = require("node:fs/promises");
-const { pipeline } = require("node:stream/promises");
-const yauzl = require("yauzl");
-const yazl = require("yazl");
+import type { Readable } from "node:stream";
+interface ManifestIdentity { publisher: string; name: string; version: string }
+import * as fs from "node:fs";
+import * as fsp from "node:fs/promises";
+import { pipeline } from "node:stream/promises";
+import * as yauzl from "yauzl";
+import * as yazl from "yazl";
 
 const SCREENSHOT_ASSET = "PQExplorer.Screenshots.Explorer";
 
-function screenshotUrl(manifest) {
+function screenshotUrl(manifest: ManifestIdentity) {
   return `https://${manifest.publisher}.gallery.vsassets.io/_apis/public/gallery/publisher/${manifest.publisher}/extension/${manifest.name}/${manifest.version}/assetbyname/${SCREENSHOT_ASSET}`;
 }
 
 // Register the screenshot on the same Marketplace publication, avoiding a separate
 // image host or a Git push merely to serve the README image.
-async function registerScreenshot(artifact) {
-  const input = await new Promise((resolve, reject) => yauzl.open(artifact, { lazyEntries: true }, (error, archive) => error ? reject(error) : resolve(archive)));
+async function registerScreenshot(artifact: string) {
+  const input = await new Promise<yauzl.ZipFile>((resolve, reject) => yauzl.open(artifact, { lazyEntries: true }, (error, archive) => error ? reject(error) : resolve(archive!)));
   const output = new yazl.ZipFile();
   const temporary = artifact + ".assets.tmp";
   const writing = pipeline(output.outputStream, fs.createWriteStream(temporary));
@@ -23,15 +23,15 @@ async function registerScreenshot(artifact) {
   writing.catch(() => {});
   let hasScreenshot = false, hasManifest = false;
   try {
-    await new Promise((resolve, reject) => {
+    await new Promise<void>((resolve, reject) => {
       input.on("error", reject);
-      input.on("entry", entry => {
+      input.on("entry", (entry: yauzl.Entry) => {
         if (entry.fileName.endsWith("/")) { input.readEntry(); return; }
         if (entry.fileName === "extension/assets/explorer.png") hasScreenshot = true;
         input.openReadStream(entry, (error, stream) => {
           if (error) { reject(error); return; }
           if (entry.fileName === "extension.vsixmanifest") {
-            const chunks = [];
+            const chunks: Buffer[] = [];
             stream.on("data", chunk => chunks.push(chunk));
             stream.on("error", reject);
             stream.on("end", () => {
@@ -58,11 +58,11 @@ async function registerScreenshot(artifact) {
     await writing;
     await fsp.rename(temporary, artifact);
   } catch (error) {
-    input.close(); output.outputStream.destroy();
+    input.close(); (output.outputStream as Readable).destroy();
     await writing.catch(() => {});
     await fsp.rm(temporary, { force: true });
     throw error;
   }
 }
 
-module.exports = { screenshotUrl, registerScreenshot, SCREENSHOT_ASSET };
+export { screenshotUrl, registerScreenshot, SCREENSHOT_ASSET };

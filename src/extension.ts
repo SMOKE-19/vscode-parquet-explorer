@@ -1,16 +1,18 @@
-"use strict";
-
-const fs = require("node:fs");
-const path = require("node:path");
-const crypto = require("node:crypto");
-const vscode = require("vscode");
-const { startBridge } = require("./bridge");
-const { FavoritesStore } = require("./favorites");
-const activeBridges = new Set();
-const closingBridges = new Set();
+import type { Bridge, SaveFavoriteResult, FavoriteSql, StartupMessage, RequestMessage, EngineOperation, Payload, QueryPayload, SourceMetadata } from "./shared/protocol";
+export interface ExplorerOptions { initialSql?: string }
+export interface ExplorerApi { apiVersion: 1; openDataset(uri?: vscode.Uri, options?: ExplorerOptions): Promise<unknown> }
+import { errorMessage } from "./shared/errors";
+import * as fs from "node:fs";
+import * as path from "node:path";
+import * as crypto from "node:crypto";
+import * as vscode from "vscode";
+import { startBridge } from "./bridge";
+import { FavoritesStore } from "./favorites";
+const activeBridges = new Set<Bridge>();
+const closingBridges = new Set<Promise<number>>();
 const VIEW_TYPE = "pqExplorer.parquetExplorer";
 
-function stopBridge(bridge) {
+function stopBridge(bridge: Bridge) {
   activeBridges.delete(bridge);
   const stopping = Promise.resolve(bridge.stop());
   closingBridges.add(stopping);
@@ -18,9 +20,9 @@ function stopBridge(bridge) {
   return stopping;
 }
 
-async function saveFavorite(store, payload) {
+async function saveFavorite(store: FavoritesStore, payload?: { id?: string; sql?: string }): Promise<SaveFavoriteResult> {
   let id = payload?.id;
-  let original;
+  let original: FavoriteSql | undefined;
   if (id) {
     original = await store.get(id);
     const choice = await vscode.window.showQuickPick(["현재 즐겨찾기 수정", "새 즐겨찾기로 저장"], { title: "SQL 즐겨찾기 저장" });
@@ -34,7 +36,7 @@ async function saveFavorite(store, payload) {
   return store.save({ id, alias, description, sql: payload?.sql });
 }
 
-function renderHtml(extensionPath, webview) {
+function renderHtml(extensionPath: string, webview: vscode.Webview) {
   const nonce = crypto.randomBytes(16).toString("hex");
   const script = webview.asWebviewUri(vscode.Uri.file(path.join(extensionPath, "media", "explorer.js")));
   const sqlEditorScript = webview.asWebviewUri(vscode.Uri.file(path.join(extensionPath, "media", "sql-editor.js")));
@@ -47,7 +49,7 @@ function renderHtml(extensionPath, webview) {
     .replaceAll("__STYLE_URI__", style.toString());
 }
 
-async function selectSource(uri) {
+async function selectSource(uri?: vscode.Uri) {
   if (uri?.scheme === "file") return uri;
   if (vscode.window.activeTextEditor?.document.uri.scheme === "file") {
     const active = vscode.window.activeTextEditor.document.uri;
@@ -63,11 +65,11 @@ async function selectSource(uri) {
   return files?.[0];
 }
 
-async function attachExplorer(context, panel, source, favorites, initialSql) {
+async function attachExplorer(context: vscode.ExtensionContext, panel: vscode.WebviewPanel, source: vscode.Uri, favorites: FavoritesStore, initialSql?: string) {
   const workspace = vscode.workspace.getWorkspaceFolder(source);
   const root = workspace?.uri.fsPath || path.dirname(source.fsPath);
   let currentSource = source.fsPath;
-  let currentSheet;
+  let currentSheet: string | undefined;
   const configuration = vscode.workspace.getConfiguration("pqExplorer", source);
   const settings = {
     queryTimeoutSeconds: configuration.get("queryTimeoutSeconds", 30),
@@ -82,18 +84,18 @@ async function attachExplorer(context, panel, source, favorites, initialSql) {
     enableScripts: true,
     localResourceRoots: [vscode.Uri.file(path.join(context.extensionPath, "media"))],
   };
-  let bridge;
+  let bridge: Bridge | undefined;
   let disposed = false;
   let webviewLoaded = false;
-  let startupState;
+  let startupState: StartupMessage | undefined;
   let launching = false;
-  function publish(state) {
+  function publish(state: StartupMessage) {
     if (state.type === "ready" && initialSql) state = { ...state, initialSql };
     startupState = state;
     if (!disposed && webviewLoaded) panel.webview.postMessage(state);
   }
-  function startupFailure(error) {
-    publish({ type: "startupError", error: String(error.message || error) });
+  function startupFailure(error: unknown) {
+    publish({ type: "startupError", error: errorMessage(error) });
   }
   async function launchBridge() {
     if (launching) throw new Error("DuckDB 작업자를 시작하는 중입니다. 잠시 기다려 주세요.");
@@ -117,7 +119,7 @@ async function attachExplorer(context, panel, source, favorites, initialSql) {
     disposed = true;
     if (bridge) { void stopBridge(bridge); bridge = undefined; }
   });
-  panel.webview.onDidReceiveMessage(async (message) => {
+  panel.webview.onDidReceiveMessage(async (message: RequestMessage | { type: "loaded"; id?: never; operation?: never }) => {
     if (message?.type === "loaded") {
       webviewLoaded = true;
       if (startupState && !disposed) panel.webview.postMessage(startupState);
@@ -132,7 +134,7 @@ async function attachExplorer(context, panel, source, favorites, initialSql) {
           panel.webview.postMessage({ id: message.id, result: { restarted: true, ...(initialSql ? { initialSql } : {}) } });
         }
       } catch (error) {
-        if (!disposed) panel.webview.postMessage({ id: message.id, error: String(error.message || error) });
+        if (!disposed) panel.webview.postMessage({ id: message.id, error: errorMessage(error) });
       }
       return;
     }
@@ -161,7 +163,7 @@ async function attachExplorer(context, panel, source, favorites, initialSql) {
         return;
       }
     } catch (error) {
-      if (!disposed) panel.webview.postMessage({ id: message.id, error: String(error.message || error) });
+      if (!disposed) panel.webview.postMessage({ id: message.id, error: errorMessage(error) });
       return;
     }
     if (!bridge) {
@@ -174,18 +176,18 @@ async function attachExplorer(context, panel, source, favorites, initialSql) {
         timeout_seconds: settings.queryTimeoutSeconds,
         include_total_rows: settings.exactResultCount,
       } : message.payload;
-      if (message.operation === "query") delete payload.favorite_id;
-      const result = await bridge.request(message.operation, payload);
-      if (message.operation === "source") { currentSource = result.source_path; currentSheet = result.selected_sheet ?? undefined; }
-      const firstRows = message.payload?.row_offset === 0
-        || (message.payload?.row_offset === undefined && (message.payload?.page ?? 0) === 0);
-      if (message.operation === "query" && firstRows && message.payload?.column_offset === 0) {
-        try { await favorites.recordUse(message.payload.favorite_id, message.payload.sql); }
+      if (message.operation === "query") delete (payload as QueryPayload).favorite_id;
+      const result = await bridge.request(message.operation as EngineOperation, payload as Payload<EngineOperation>);
+      if (message.operation === "source") { currentSource = (result as SourceMetadata).source_path; currentSheet = (result as SourceMetadata).selected_sheet ?? undefined; }
+      const firstRows = (message.payload as QueryPayload | undefined)?.row_offset === 0
+        || ((message.payload as QueryPayload | undefined)?.row_offset === undefined && ((message.payload as QueryPayload | undefined)?.page ?? 0) === 0);
+      if (message.operation === "query" && firstRows && (message.payload as QueryPayload | undefined)?.column_offset === 0) {
+        try { await favorites.recordUse((message.payload as QueryPayload).favorite_id, (message.payload as QueryPayload).sql); }
         catch (error) { console.warn("PQ Explorer: 즐겨찾기 사용 횟수를 저장하지 못했습니다.", error); }
       }
       if (!disposed) panel.webview.postMessage({ id: message.id, result });
     } catch (error) {
-      if (!disposed) panel.webview.postMessage({ id: message.id, error: String(error.message || error) });
+      if (!disposed) panel.webview.postMessage({ id: message.id, error: errorMessage(error) });
     }
   });
   panel.webview.html = renderHtml(context.extensionPath, panel.webview);
@@ -198,7 +200,7 @@ async function attachExplorer(context, panel, source, favorites, initialSql) {
   }
 }
 
-async function openExplorer(context, sourceUri, favorites, options = {}) {
+async function openExplorer(context: vscode.ExtensionContext, sourceUri: vscode.Uri | undefined, favorites: FavoritesStore, options: ExplorerOptions = {}) {
   const initialSql = options.initialSql;
   if (initialSql !== undefined && (typeof initialSql !== "string" || !initialSql.trim() || initialSql.length > 200000)) {
     throw new Error("initialSql은 비어 있지 않은 SQL 문자열이어야 합니다 (최대 200000자).");
@@ -222,7 +224,7 @@ async function openExplorer(context, sourceUri, favorites, options = {}) {
   return attachExplorer(context, panel, source, favorites, initialSql);
 }
 
-function activate(context) {
+function activate(context: vscode.ExtensionContext): ExplorerApi {
   const favorites = new FavoritesStore(context.globalStorageUri.fsPath);
   context.subscriptions.push(vscode.commands.registerCommand(
     "pqExplorer.openParquetExplorer",
@@ -238,7 +240,7 @@ function activate(context) {
   }, { supportsMultipleEditorsPerDocument: true }));
   return {
     apiVersion: 1,
-    openDataset: (uri, options = {}) => openExplorer(context, uri, favorites, options),
+    openDataset: (uri: vscode.Uri | undefined, options: ExplorerOptions = {}) => openExplorer(context, uri, favorites, options),
   };
 }
 
@@ -247,4 +249,4 @@ async function deactivate() {
   await Promise.all([...closingBridges]);
 }
 
-module.exports = { activate, deactivate };
+export { activate, deactivate };

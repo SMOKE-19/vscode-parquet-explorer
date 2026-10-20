@@ -1,73 +1,85 @@
-"use strict";
-
+import type { CellValue, TruncatedCell, QueryResult, ResultColumn, SourceMetadata, Favorite, Operation, Payload, Result, WorkerMessage, RequestMessage, RequestArgs } from "../shared/protocol";
+import type {} from "./editor-types";
+interface PendingCall { resolve(value: unknown): void; reject(error: unknown): void }
+interface Elements {
+  source: HTMLInputElement; sheet: HTMLSelectElement; 'row-position': HTMLInputElement; 'column-position': HTMLInputElement;
+  'page-size': HTMLSelectElement; 'column-limit': HTMLSelectElement; 'favorites-search': HTMLInputElement; 'favorites-sort': HTMLSelectElement;
+  run: HTMLButtonElement; cancel: HTMLButtonElement; 'runtime-retry': HTMLButtonElement; 'restart-worker': HTMLButtonElement;
+  'previous-page': HTMLButtonElement; 'next-page': HTMLButtonElement; 'previous-columns': HTMLButtonElement; 'next-columns': HTMLButtonElement;
+}
+function isTruncated(value: CellValue): value is TruncatedCell & CellValue { return !!(value as TruncatedCell | null)?.__pq_truncated__; }
+import { errorMessage } from "../shared/errors";
 const vscode = acquireVsCodeApi();
-const $ = (id) => document.getElementById(id);
-const pending = new Map();
+function $<K extends string>(id: K): K extends keyof Elements ? Elements[K] : HTMLElement {
+  return document.getElementById(id)! as K extends keyof Elements ? Elements[K] : HTMLElement;
+}
+const pending = new Map<number, PendingCall>();
 let nextId = 1;
 let querySequence = 0;
-let activeRequestId;
+let activeRequestId: string | undefined;
 let runtimeReady = false;
 let initialQueryApplied = false;
-let currentSourcePath;
+let currentSourcePath: string | undefined;
 let changingSource = false;
-let sourceMetadata;
+let sourceMetadata: SourceMetadata | undefined;
 let metadataGeneration = 0;
-let statisticsRequestedGeneration;
+let statisticsRequestedGeneration: number | undefined;
 let rowOffset = 0;
 let columnOffset = 0;
 let activeRowLimit = 50;
 let activeColumnLimit = 20;
-let pinnedColumns = [];
-let result;
-let favoriteId;
-let favorites = [];
-let colorQuerySql;
-const columnColors = new Map();
+let pinnedColumns: number[] = [];
+let result: QueryResult;
+let favoriteId: string | undefined;
+let favorites: Favorite[] = [];
+let colorQuerySql: string | undefined;
+const columnColors = new Map<number, Map<string, number>>();
 const CATEGORY_HUES = [210, 30, 150, 330, 90, 270, 0, 180];
 const sqlEditor = window.PQSqlEditor.create($("sql-editor"), {
   onRun: () => runQuery(),
   onLint: (sql) => runtimeReady ? request("lint", { sql }) : Promise.resolve({ ok: true }),
 });
 
-function request(operation, payload = {}) {
-  return new Promise((resolve, reject) => {
+function request<K extends Operation>(operation: K, ...args: RequestArgs<K>): Promise<Result<K>> {
+  const payload = args[0] === undefined ? {} as Payload<K> : args[0];
+  return new Promise<Result<K>>((resolve, reject) => {
     const id = nextId++;
-    pending.set(id, { resolve, reject });
-    vscode.postMessage({ id, operation, payload });
+    pending.set(id, { resolve: value => resolve(value as Result<K>), reject });
+    vscode.postMessage({ id, operation, payload } as RequestMessage);
   });
 }
 
-function status(message, error = false) {
+function status(message: string, error = false) {
   $("status").textContent = message;
   $("status").classList.toggle("error", error);
 }
 
-function formatCell(value) {
+function formatCell(value: CellValue): string {
   if (value === null) return "NULL";
-  if (value?.__pq_truncated__) return value.preview;
+  if (isTruncated(value)) return value.preview;
   if (typeof value === "object") return JSON.stringify(value);
   return String(value);
 }
 
-function formatBytes(value) {
-  if (!Number.isFinite(value) || value < 0) return "—";
+function formatBytes(value: number | undefined) {
+  if (!Number.isFinite(value) || value! < 0) return "—";
   const units = ["B", "KiB", "MiB", "GiB", "TiB"];
-  let size = value;
+  let size = value!;
   let unit = 0;
   while (size >= 1024 && unit < units.length - 1) { size /= 1024; unit += 1; }
   return `${unit === 0 ? size.toLocaleString() : size.toFixed(2)} ${units[unit]}`;
 }
 
-function categoryKey(value) {
+function categoryKey(value: CellValue) {
   if (value === null) return "null";
   return `${typeof value}:${typeof value === "object" ? JSON.stringify(value) : value}`;
 }
 
-function categoryColors(rows, column, columnIndex) {
+function categoryColors(rows: CellValue[][], column: ResultColumn, columnIndex: number) {
   if (rows.length < 2) return null;
   const absoluteIndex = column.index ?? result.column_offset + columnIndex;
   let colors = columnColors.get(absoluteIndex);
-  const keys = new Set();
+  const keys = new Set<string>();
   for (const row of rows) keys.add(categoryKey(row[columnIndex]));
   if (keys.size === rows.length) return null;
   if (!colors) {
@@ -88,8 +100,8 @@ function categoryColors(rows, column, columnIndex) {
   return colors;
 }
 
-function favoriteError(error) {
-  $("favorites-error").textContent = String(error.message || error);
+function favoriteError(error: unknown) {
+  $("favorites-error").textContent = errorMessage(error);
 }
 
 function renderFavorites() {
@@ -102,8 +114,8 @@ function renderFavorites() {
   visible.sort((a, b) => {
     if (Boolean(a.pinned) !== Boolean(b.pinned)) return a.pinned ? -1 : 1;
     if (sort === "alias") return a.alias.localeCompare(b.alias);
-    const key = { frequent: "useCount", used: "lastUsedAt", updated: "updatedAt" }[sort];
-    const difference = sort === "frequent" ? (b[key] || 0) - (a[key] || 0) : String(b[key] || "").localeCompare(String(a[key] || ""));
+    const key = ({ frequent: "useCount", used: "lastUsedAt", updated: "updatedAt" } as const)[sort as 'frequent' | 'used' | 'updated'];
+    const difference = sort === "frequent" ? (b.useCount || 0) - (a.useCount || 0) : String(b[key] || "").localeCompare(String(a[key] || ""));
     return difference || String(b.updatedAt || "").localeCompare(String(a.updatedAt || ""));
   });
   if (!visible.length) {
@@ -195,7 +207,7 @@ async function openFavorites() {
   } catch (error) { favoriteError(error); }
 }
 
-function render(resultValue) {
+function render(resultValue: QueryResult) {
   result = resultValue;
   if (colorQuerySql !== result.sql) {
     colorQuerySql = result.sql;
@@ -254,7 +266,7 @@ function render(resultValue) {
         }
         if (value === null) td.classList.add("null");
         const text = formatCell(value);
-        if (value?.__pq_truncated__) {
+        if (isTruncated(value)) {
           const count = document.createElement("span");
           count.className = "list-count truncated";
           count.textContent = "잘림";
@@ -269,7 +281,7 @@ function render(resultValue) {
           td.append(count);
         }
         td.append(document.createTextNode(text.length > 240 ? `${text.slice(0, 237)}…` : text));
-        td.title = value?.__pq_truncated__ ? `전송 상한으로 잘림${value.item_count === undefined ? "" : ` · 전체 ${value.item_count.toLocaleString()}개 항목`}` : text;
+        td.title = isTruncated(value) ? `전송 상한으로 잘림${value.item_count === undefined ? "" : ` · 전체 ${value.item_count.toLocaleString()}개 항목`}` : text;
         tr.append(td);
       });
       body.append(tr);
@@ -280,8 +292,8 @@ function render(resultValue) {
     for (const [index, column] of result.columns.entries()) {
       if (!pinnedColumns.includes(column.index)) continue;
       const left = `${pinnedLeft}px`;
-      header.children[index + 1].style.left = left;
-      for (const row of body.rows) row.cells[index + 1].style.left = left;
+      (header.children[index + 1] as HTMLElement).style.left = left;
+      for (const row of Array.from(body.rows)) row.cells[index + 1].style.left = left;
       pinnedLeft += header.children[index + 1].getBoundingClientRect().width;
     }
   }
@@ -289,7 +301,7 @@ function render(resultValue) {
     ? `${(result.row_offset + 1).toLocaleString()}-${(result.row_offset + result.rows.length).toLocaleString()}` : "—";
   const movingColumns = result.columns.filter((column) => !pinnedColumns.includes(column.index));
   $("column-position").value = movingColumns.length
-    ? `${(movingColumns[0].index + 1).toLocaleString()}-${(movingColumns.at(-1).index + 1).toLocaleString()}` : "—";
+    ? `${(movingColumns[0].index + 1).toLocaleString()}-${(movingColumns.at(-1)!.index + 1).toLocaleString()}` : "—";
   $("previous-page").disabled = result.row_offset === 0;
   $("next-page").disabled = !result.has_more;
   $("next-page").title = result.has_more ? "다음 페이지" : "현재 SQL 결과의 마지막 페이지입니다.";
@@ -298,7 +310,7 @@ function render(resultValue) {
   status(`${result.elapsed_ms} ms`);
 }
 
-async function query(nextRowOffset = 0, nextColumnOffset = 0, limits = {}) {
+async function query(nextRowOffset = 0, nextColumnOffset = 0, limits: { rows?: number; columns?: number } = {}) {
   if (!runtimeReady || changingSource) return;
   const sourcePath = $("source").value.trim();
   const sourceChanged = sourcePath !== currentSourcePath || ($("sheet").value || null) !== (sourceMetadata?.selected_sheet || null);
@@ -323,7 +335,7 @@ async function query(nextRowOffset = 0, nextColumnOffset = 0, limits = {}) {
         nextColumnOffset = 0;
         limits = {};
       } catch (error) {
-        $("source-error").textContent = String(error.message || error);
+        $("source-error").textContent = errorMessage(error);
         $("source-error").hidden = false;
         $("source").setAttribute("aria-invalid", "true");
         status("소스 경로를 확인하세요.", true);
@@ -357,7 +369,7 @@ async function query(nextRowOffset = 0, nextColumnOffset = 0, limits = {}) {
     render(response);
     if (sourceChanged && sqlEditor.getValue() === sql) sqlEditor.applyLintResult({ ok: true });
   } catch (error) {
-    if (sequence === querySequence) status(String(error.message || error), true);
+    if (sequence === querySequence) status(errorMessage(error), true);
   } finally {
     if (sequence === querySequence) {
       $("run").disabled = false;
@@ -368,7 +380,7 @@ async function query(nextRowOffset = 0, nextColumnOffset = 0, limits = {}) {
   }
 }
 
-function applyMetadata(metadata) {
+function applyMetadata(metadata: SourceMetadata) {
   columnColors.clear();
   colorQuerySql = undefined;
   pinnedColumns = [];
@@ -385,7 +397,8 @@ function applyMetadata(metadata) {
   renderMetadata();
 }
 
-function renderMetadata(error) {
+function renderMetadata(error?: string) {
+  if (!sourceMetadata) return;
   const rows = sourceMetadata.row_count == null ? (error ? "행 수 확인 실패" : "행 수 확인 중…") : `행 ${sourceMetadata.row_count.toLocaleString()}`;
   $("meta").textContent = `${sourceMetadata.file_count.toLocaleString()} file(s) · ${formatBytes(sourceMetadata.file_bytes)} · 칼럼 ${sourceMetadata.column_count.toLocaleString()} · ${rows}`;
   $("meta").title = error ? `선택한 원본 파일·데이터셋의 정보\n${error}` : "선택한 원본 파일·데이터셋의 전체 정보 (SQL 필터 적용 전)";
@@ -404,7 +417,7 @@ async function refreshSourceStatistics() {
   } catch (error) {
     if (generation === metadataGeneration) {
       statisticsRequestedGeneration = undefined;
-      renderMetadata(String(error.message || error));
+      renderMetadata(errorMessage(error));
     }
   }
 }
@@ -417,7 +430,7 @@ function runQuery() {
   if (!$("run").disabled) return query();
 }
 
-function toggleColumnPin(index) {
+function toggleColumnPin(index: number) {
   if (!Number.isInteger(index)) return;
   if (pinnedColumns.includes(index)) {
     pinnedColumns = pinnedColumns.filter((item) => item !== index);
@@ -434,9 +447,9 @@ function toggleColumnPin(index) {
   query(rowOffset, 0);
 }
 
-window.addEventListener("message", async (event) => {
+window.addEventListener("message", async (event: MessageEvent<WorkerMessage>) => {
   const message = event.data;
-  if (typeof message.id === "number") {
+  if ("id" in message && typeof message.id === "number") {
     const call = pending.get(message.id);
     if (!call) return;
     pending.delete(message.id);
@@ -463,7 +476,7 @@ window.addEventListener("message", async (event) => {
       }
       await query();
     }
-    catch (error) { status(String(error.message || error), true); }
+    catch (error) { status(errorMessage(error), true); }
   }
 });
 
@@ -482,8 +495,8 @@ async function restartWorker() {
     }
     await query();
   } catch (error) {
-    $("runtime-reason").textContent = String(error.message || error);
-    status(String(error.message || error), true);
+    $("runtime-reason").textContent = errorMessage(error);
+    status(errorMessage(error), true);
   } finally { $("runtime-retry").disabled = $("restart-worker").disabled = false; }
 }
 $("runtime-retry").addEventListener("click", restartWorker);
@@ -494,14 +507,14 @@ $("cancel").addEventListener("click", async () => {
   $("cancel").disabled = true;
   status("DuckDB 조회를 취소하는 중…");
   try { await request("cancel", { request_id: activeRequestId }); }
-  catch (error) { status(String(error.message || error), true); }
+  catch (error) { status(errorMessage(error), true); }
 });
 $("restart-worker").addEventListener("click", restartWorker);
 $("save-favorite").addEventListener("click", async () => {
   try {
     const saved = await request("favorites.save", { id: favoriteId, sql: sqlEditor.getValue() });
     if (!saved.cancelled) { favoriteId = saved.id; status(`즐겨찾기 저장: ${saved.alias}`); }
-  } catch (error) { status(String(error.message || error), true); }
+  } catch (error) { status(errorMessage(error), true); }
 });
 $("pick-favorite").addEventListener("click", async () => {
   await openFavorites();
@@ -525,7 +538,7 @@ $("lint").addEventListener("click", async () => {
     sqlEditor.applyLintResult(response);
     status(response.ok ? `SQL 정상 · ${response.elapsed_ms} ms` : response.message, !response.ok);
   }
-  catch (error) { status(String(error.message || error), true); }
+  catch (error) { status(errorMessage(error), true); }
 });
 $("source").addEventListener("input", () => {
   $("source-error").hidden = true;
