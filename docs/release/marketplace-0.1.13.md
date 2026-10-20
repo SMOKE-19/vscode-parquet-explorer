@@ -23,4 +23,19 @@
 
 사용자 요청에 따라 TypeScript 전환과 0.1.13 메타데이터를 원격 `main`에 반영한 뒤 위 파일을 Marketplace에 게시한다. 업로드 접수와 Gallery 검증 완료, 공개 다운로드의 파일 일치를 구분해 후속 기록으로 남긴다. Git 태그·GitHub Release·Tailnet 페이지 변경은 수행하지 않는다.
 
+## 업로드 접수
+
+- 구현 커밋 `e68fc98`을 원격 `main`에 push했다. 생성 JavaScript는 Git에서 제외하고 TypeScript 원본·설정·개발 문서를 반영했다.
+- Linux x64 업로드가 성공했고, 2026-10-20 12:23:00 UTC Gallery 조회에서 0.1.13 등록과 로컬 SHA-256 일치를 확인했다.
+- Windows x64도 업로드가 성공했다. 12:23:07 UTC 조회에서는 두 플랫폼이 모두 등록됐으며 각 서버 SHA-256이 위 파일과 일치했다.
+- 해당 조회 시 두 플랫폼은 Gallery `flags=0`으로 검증 대기 상태였다. 최종 검증·공개 다운로드 확인 결과는 후속 기록에 남긴다.
+
+## 최종 확인
+
+- 2026-10-20 12:29:32 UTC 조회에서 Linux x64의 Gallery `flags=1`을 확인했다.
+- 12:30:22 UTC(한국 시각 21:30:22) 조회에서는 Windows x64·Linux x64가 모두 `flags=1`로 검증 완료됐으며 서버 SHA-256도 위 파일과 일치했다.
+- 두 플랫폼의 CDN 원본과 일반 `vspackage?targetPlatform=...` 다운로드가 HTTP 200을 반환했다. HTTP gzip을 해제한 VSIX의 버전·target·크기·SHA-256이 각각 로컬 게시 파일과 일치했다. Linux CDN 다운로드에는 대기 시간이 있었으나 완료 후 정상 파일임을 확인했다.
+- 같은 버전의 Marketplace 아이콘·스크린샷이 로컬 이미지와 일치했고, 공개 설명의 파일 형식과 0.1.13 스크린샷 주소를 확인했다. 검증 중 스크린샷 주소는 일시적으로 404를 반환했으나 Linux 검증 완료 후 HTTP 200과 내용 일치를 확인했다.
+- Git·Marketplace 반영과 검증을 완료했다. 업로드한 VSIX를 변경하거나 다시 빌드하지 않았다. 최종 후속 변경은 배포 기록이다.
+
 [Marketplace에서 PQ Explorer 보기](https://marketplace.visualstudio.com/items?itemName=smoke-19.pq-explorer)
