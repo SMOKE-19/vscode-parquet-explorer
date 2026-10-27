@@ -20,7 +20,7 @@ Parquet·CSV·TSV·SBDF·XLSX 파일을 VS Code에서 열고 SQL로 탐색하세
 ## 시작하기
 
 1. 확장 목록에서 **PQ Explorer**를 설치합니다.
-2. 탐색기에서 `.parquet`·`.csv`·`.tsv`·`.sbdf`·`.xlsx` 파일을 엽니다. 다른 편집기로 열리면 **Reopen Editor With... → PQ Explorer**를 선택하세요.
+2. 탐색기에서 `.parquet`·`.pq`·`.csv`·`.tsv`·`.sbdf`·`.xlsx` 파일을 엽니다. 다른 편집기로 열리면 **Reopen Editor With... → PQ Explorer**를 선택하세요.
 3. SQL을 작성하고 **실행** 또는 `Ctrl+Enter`를 누릅니다.
 
 ```sql
@@ -37,10 +37,12 @@ LIMIT 50;
 
 | 형식 | 읽기 동작 |
 | --- | --- |
-| Parquet | 파일 또는 재귀 dataset 폴더. 첫 페이지 이후 푸터에서 원본 행 수 갱신 |
+| Parquet (`.parquet`·`.pq`) | 파일 또는 재귀 dataset 폴더. 첫 페이지 이후 푸터에서 원본 행 수 갱신 |
 | CSV·TSV | UTF-8(BOM 포함). DuckDB가 헤더·타입·구분자를 감지하며 TSV는 탭 사용 |
 | SBDF | SBDF 1.0의 plain·RLE·bit 인코딩. NULL·문자열·수치·날짜·시간·Binary 표시 |
 | XLSX | 첫 행을 헤더로 사용. 상단 시트 선택 후 **실행**으로 변경 |
+
+`.pq`는 실제 내용이 Parquet인 파일을 지원합니다. `.parquet`와 `.pq`가 섞인 dataset 폴더도 함께 읽습니다.
 
 모든 형식은 `SELECT * FROM data`로 조회하며 필터·정렬·집계·즐겨찾기를 공통으로 사용할 수 있습니다. 폴더 열기는 Parquet dataset만 지원합니다. SBDF·XLSX는 최초 열기 시 선택한 데이터를 DuckDB 메모리 테이블에 읽어 들이므로 큰 파일은 준비 시간이 필요합니다. 원본은 수정하지 않습니다.
 

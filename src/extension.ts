@@ -53,13 +53,13 @@ async function selectSource(uri?: vscode.Uri) {
   if (uri?.scheme === "file") return uri;
   if (vscode.window.activeTextEditor?.document.uri.scheme === "file") {
     const active = vscode.window.activeTextEditor.document.uri;
-    if (/\.(parquet|csv|tsv|sbdf|xlsx)$/i.test(active.fsPath)) return active;
+    if (/\.(parquet|pq|csv|tsv|sbdf|xlsx)$/i.test(active.fsPath)) return active;
   }
   const files = await vscode.window.showOpenDialog({
     canSelectFiles: true,
     canSelectFolders: true,
     canSelectMany: false,
-    filters: { "데이터 파일": ["parquet", "csv", "tsv", "sbdf", "xlsx"] },
+    filters: { "데이터 파일": ["parquet", "pq", "csv", "tsv", "sbdf", "xlsx"] },
     openLabel: "데이터 열기",
   });
   return files?.[0];
@@ -208,7 +208,7 @@ async function openExplorer(context: vscode.ExtensionContext, sourceUri: vscode.
   const source = await selectSource(sourceUri);
   if (!source) return;
   const stat = await vscode.workspace.fs.stat(source);
-  if (!(stat.type & vscode.FileType.Directory) && !/\.(parquet|csv|tsv|sbdf|xlsx)$/i.test(source.fsPath)) {
+  if (!(stat.type & vscode.FileType.Directory) && !/\.(parquet|pq|csv|tsv|sbdf|xlsx)$/i.test(source.fsPath)) {
     vscode.window.showErrorMessage("Parquet·CSV·TSV·SBDF·XLSX 파일 또는 Parquet dataset 폴더를 선택하세요.");
     return;
   }

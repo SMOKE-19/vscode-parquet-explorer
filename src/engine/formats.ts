@@ -9,7 +9,12 @@ import { timestampMillisValue } from "@duckdb/node-api";
 import * as yauzl from "yauzl";
 import { readSbdf } from "./sbdf";
 const EXTENSIONS: readonly DataFormat[] = ["parquet", "csv", "tsv", "sbdf", "xlsx"];
-const formatOf = (file: string): DataFormat | undefined => { const ext = path.extname(file).slice(1).toLowerCase(); return EXTENSIONS.includes(ext as DataFormat) ? ext as DataFormat : undefined; };
+const formatOf = (file: string): DataFormat | undefined => {
+  const ext = path.extname(file).slice(1).toLowerCase();
+  // .pq is an alias for Parquet, not a separate engine format.
+  if (ext === "pq") return "parquet";
+  return EXTENSIONS.includes(ext as DataFormat) ? ext as DataFormat : undefined;
+};
 const identifier = (value: string) => '"' + value.replaceAll('"', '""') + '"';
 
 function uniqueNames(names: unknown[]) {

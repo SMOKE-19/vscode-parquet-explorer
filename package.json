@@ -2,7 +2,7 @@
   "name": "pq-explorer",
   "displayName": "PQ Explorer",
   "description": "Read-only DuckDB viewer for Parquet, CSV, TSV, SBDF and Excel files.",
-  "version": "0.1.13",
+  "version": "0.1.14",
   "publisher": "smoke-19",
   "repository": {
     "type": "git",
@@ -61,6 +61,9 @@
             "filenamePattern": "*.parquet"
           },
           {
+            "filenamePattern": "*.pq"
+          },
+          {
             "filenamePattern": "*.csv"
           },
           {
@@ -86,7 +89,7 @@
       "explorer/context": [
         {
           "command": "pqExplorer.openParquetExplorer",
-          "when": "resourceExtname =~ /\\.(parquet|csv|tsv|sbdf|xlsx)$/i",
+          "when": "resourceExtname =~ /\\.(parquet|pq|csv|tsv|sbdf|xlsx)$/i",
           "group": "navigation"
         }
       ]

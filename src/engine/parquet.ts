@@ -47,9 +47,9 @@ async function discover(source: string, root: string): Promise<Discovered> {
       visited.add(real);
       for (const child of await fs.readdir(real, { withFileTypes: true })) {
         const childPath = path.join(real, child.name);
-        if (child.isDirectory() || child.name.toLowerCase().endsWith(".parquet")) await walk(childPath);
+        if (child.isDirectory() || formatOf(child.name) === "parquet") await walk(childPath);
       }
-    } else if (info.isFile() && real.toLowerCase().endsWith(".parquet")) files.push(real);
+    } else if (info.isFile() && formatOf(real) === "parquet") files.push(real);
   }
   await walk(resolved);
   if (!files.length) throw new Error(`Parquet 파일을 찾을 수 없습니다: ${resolved}`);
