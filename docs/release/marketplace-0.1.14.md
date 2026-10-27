@@ -24,4 +24,16 @@
 
 기존 `smoke-19` 인증을 확인했다. 수정 소스·버전·사용 안내를 원격 `main`에 반영한 뒤 위 VSIX를 게시한다. 업로드 접수와 Gallery 검증 완료·공개 다운로드 일치를 구분해 결과를 기록한다.
 
+- 구현 커밋 `bffa4f6`을 원격 `main`에 push했다.
+- Linux x64·Windows x64 모두 업로드 성공 응답을 받았다. 2026-10-27 12:24:59 UTC Gallery 조회에서 두 플랫폼의 0.1.14 등록과 로컬 SHA-256 일치를 확인했다.
+- 해당 시점은 두 플랫폼 모두 `flags=0`으로 Marketplace 검증 대기 상태였다. 완료 확인은 아래 후속 기록에 남긴다.
+
+## 최종 확인
+
+- 2026-10-27 12:32:12 UTC 조회에서 Linux x64의 Gallery `flags=1`을 확인했다.
+- 12:32:30 UTC(한국 시각 21:32:30) 조회에서는 Windows x64·Linux x64 모두 `flags=1`로 검증 완료됐고 서버 해시도 위 파일과 일치했다.
+- 각 플랫폼의 일반 공개 VSIX 다운로드가 HTTP 200을 반환했다. HTTP gzip을 해제한 파일의 버전·target·SHA-256이 로컬 게시 파일과 일치했다.
+- Marketplace 아이콘·스크린샷이 로컬 이미지와 일치했고, 공개 설명에 `.pq` 지원 안내와 0.1.14 스크린샷 주소가 반영됐음을 확인했다.
+- 게시 파일은 변경하거나 다시 빌드하지 않았다. 최종 후속 변경은 이 배포 기록이다.
+
 [Marketplace에서 PQ Explorer 보기](https://marketplace.visualstudio.com/items?itemName=smoke-19.pq-explorer)
